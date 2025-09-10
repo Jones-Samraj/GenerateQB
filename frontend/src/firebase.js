@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyAglmthVf2hbPxleSKqqLaAi_Jrz-2sNlY",
+    apiKey: "Google API Key",
     authDomain: "qb-generator-37.firebaseapp.com",
     projectId: "qb-generator-37",
     storageBucket: "qb-generator-37.firebasestorage.app",
