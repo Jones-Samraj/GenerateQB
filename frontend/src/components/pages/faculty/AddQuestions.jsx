@@ -14,7 +14,7 @@ import { useLocation } from "react-router-dom";
 
 
 const prependImageBaseUrl = (html) => {
-  const baseUrl = "http://localhost:7000"; // change this if your server is hosted elsewhere
+  const baseUrl = "http://localhost:7000";
   return html.replace(
     /<img src="\/uploads\//g,
     `<img src="${baseUrl}/uploads/`
@@ -22,7 +22,7 @@ const prependImageBaseUrl = (html) => {
 };
 
 const AddQuestions = () => {
-  const navigate = useNavigate(); // Add this line
+  const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const [formData, setFormData] = useState({
     unit: "",
@@ -38,8 +38,8 @@ const AddQuestions = () => {
     option_b: "",
     option_c: "",
     option_d: "",
-    vetting_id: "",
-    faculty_id: "",
+    faculty_id: "", // Retained faculty_id
+    vetting_id: "", // Re-add vetting_id to state
   });
   
   const location = useLocation();
@@ -54,9 +54,9 @@ const { unit, mark } = location.state || {};
   const [isUpload, setIsUpload] = useState(false);
   const [file, setFile] = useState(null);
   const [courseCode, setCourseCode] = useState("");
-  const [vettingId, setVettingId] = useState("");
   const [openSidebar, setOpenSidebar] = useState(false);
   const [degree, setDegree] = useState(""); // Add degree state
+  const [vettingId, setVettingId] = useState(""); // State to hold the fetched vetting ID
 
   const user = useSelector((state) => state.user.user);
   const email = user?.email;
@@ -115,26 +115,27 @@ const { unit, mark } = location.state || {};
       });
   }, [email, token]);
 
-  // Fetch vetting ID
+  // Fetch faculty ID and Vetting ID
   useEffect(() => {
     if (!facultyId) return;
 
     setFormData((prev) => ({ ...prev, faculty_id: facultyId }));
 
+    // Re-enable fetching the vetting_id
     axios
       .get("http://localhost:7000/api/faculty/get-vetting-id", {
         params: { faculty_id: facultyId },
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => {
-        setVettingId(res.data.vetting_id);
-        setFormData((prev) => ({
-          ...prev,
-          vetting_id: res.data.vetting_id,
-        }));
+        // Store the fetched vetting_id in state
+        if (res.data && res.data.vetting_id) {
+          setVettingId(res.data.vetting_id);
+          setFormData((prev) => ({ ...prev, vetting_id: res.data.vetting_id }));
+        }
       })
       .catch(() => {
-        toast.error("Failed to load vetting ID.");
+        toast.error("Failed to load vetting ID. Cannot submit questions.");
       });
   }, [facultyId, token]);
 
@@ -142,7 +143,7 @@ const { unit, mark } = location.state || {};
   useEffect(() => {
     if (!facultyId) return;
     axios
-      .get("http://localhost:7000/api/admin/faculty-list", {
+      .get("http://localhost:7000/api/admin/faculty-list", { // Assuming this endpoint returns the faculty list from the admin routes
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((res) => {
@@ -204,11 +205,10 @@ const { unit, mark } = location.state || {};
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.vetting_id && vettingId) {
-      setFormData((prev) => ({
-        ...prev,
-        vetting_id: vettingId,
-      }));
+    // Add a check for the vettingId before proceeding
+    if (!vettingId) {
+      toast.error("Vetting ID is missing. Cannot submit question.");
+      return;
     }
 
     if (!formData.faculty_id && facultyId) {
@@ -218,8 +218,8 @@ const { unit, mark } = location.state || {};
       }));
     }
 
-    if (!formData.vetting_id || !formData.faculty_id) {
-      toast.error("Missing vetting or faculty ID. Try again.");
+    if (!formData.faculty_id) {
+      toast.error("Missing faculty ID. Try again.");
       return;
     }
 
@@ -261,13 +261,13 @@ const { unit, mark } = location.state || {};
         const uploadFormData = new FormData();
         uploadFormData.append("file", file);
         uploadFormData.append("course_code", courseCode);
-        if (vettingId) uploadFormData.append("vetting_id", vettingId);
         if (facultyId) uploadFormData.append("faculty_id", facultyId);
+        // Add vetting_id to the upload form data
+        uploadFormData.append("vetting_id", vettingId);
 
         // Log FormData contents properly
         console.log("File being uploaded:", file.name);
         console.log("Course code:", courseCode);
-        console.log("Vetting ID:", vettingId);
         console.log("Faculty ID:", facultyId);
 
         await axios.post(
@@ -295,17 +295,32 @@ const { unit, mark } = location.state || {};
           }
         }
 
-        // Handle question form submission
-        const submissionData = {
+        // --- START: Data Formatting Fix ---
+        let submissionData = {
           ...formData,
-          vetting_id: formData.vetting_id || vettingId,
+          mark: parseInt(formData.mark, 10), // Ensure mark is a number
           faculty_id: formData.faculty_id || facultyId,
-          figure: uploadedFigurePath, // Add the figure path to submission data
+          vetting_id: vettingId,
+          figure: uploadedFigurePath,
         };
+
+        // If it's an MCQ, wrap options and answer in <p> tags to match backend expectation
+        if (submissionData.mark === 1) {
+          submissionData = {
+            ...submissionData,
+            option_a: `<p>${formData.option_a}</p>`,
+            option_b: `<p>${formData.option_b}</p>`,
+            option_c: `<p>${formData.option_c}</p>`,
+            option_d: `<p>${formData.option_d}</p>`,
+            // The answer is already one of the options, so wrap it too.
+            answer: `<p>${formData.answer}</p>`,
+          };
+        }
+        // --- END: Data Formatting Fix ---
 
         await axios.post(
           "http://localhost:7000/api/faculty/add-question",
-          submissionData,
+          submissionData, // Use the formatted submissionData
           {
             headers: {
               "Content-Type": "application/json",
@@ -355,7 +370,6 @@ const { unit, mark } = location.state || {};
         option_b: "",
         option_c: "",
         option_d: "",
-        vetting_id: vettingId,
         faculty_id: facultyId,
       });
       setFile(null);
@@ -582,7 +596,8 @@ const { unit, mark } = location.state || {};
                           }}
                           config={{
                             extraPlugins: [CustomUploadAdapterPlugin],
-                            toolbar: [
+                            toolbar:
+                            [
                               "heading",
                               "|",
                               "bold",

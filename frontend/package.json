@@ -25,6 +25,7 @@
     "chance": "^1.1.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "crypto-js": "^4.2.0",
     "dayjs": "^1.11.13",
     "dom": "^0.0.3",
     "firebase": "^11.6.0",
@@ -45,6 +46,7 @@
     "react-virtuoso": "^4.12.6",
     "recharts": "^2.15.2",
     "redux-persist": "^6.0.0",
+    "redux-persist-transform-encrypt": "^5.1.1",
     "router": "^2.2.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7"

@@ -128,7 +128,7 @@ const VettingPage = () => {
   }, [vettingId]);
 
   useEffect(() => {
-    if (!vFacultyId) return;
+    if (!vFacultyId) return; 
     const fetchEmail = async () => {
       try {
         setLoading(true);
@@ -201,7 +201,7 @@ const VettingPage = () => {
     setLoading(true);
     axios
       .get(
-        `http://localhost:7000/api/admin/faculty-question-list?course_code=${courseCode}`,
+        `http://localhost:7000/api/faculty/faculty-question-list?course_code=${courseCode}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -947,25 +947,6 @@ const VettingPage = () => {
                             }}
                           />
                         </div>
-
-                        {selectedQuestion.figure && (
-                          <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm">
-                            <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                              <Eye
-                                size={20}
-                                className="text-purple-600 flex-shrink-0"
-                              />
-                              Figure
-                            </h4>
-                            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                              <img
-                                src={`http://localhost:7000${selectedQuestion.figure}`}
-                                alt="Question Figure"
-                                className="max-w-full h-auto rounded-lg shadow-md"
-                              />
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import AdminNavbar from "../../navbar/AdminNavbar";
 import { DataGrid } from "@mui/x-data-grid";
 import Paper from "@mui/material/Paper";
+import CircularProgress from "@mui/material/CircularProgress";
 import Avatar from "@mui/material/Avatar";
 import { Drawer } from "@mui/material";
 import axios from "axios";
@@ -26,72 +27,6 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 const FacultyList = () => {
-  const token = localStorage.getItem('token');
-  const [data, setData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    setLoading(true);
-    axios
-      .get("http://localhost:7000/api/admin/faculty-list", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        }
-      })
-      .then((response) => {
-        const formatted = response.data.map((item, index) => ({
-          id: index + 1,
-          facultyId: item.faculty_id,
-          name: item.faculty_name,
-          photo: item.photo,
-          code: item.course_code,
-          subject: item.subject_name,
-          email: item.email || `${item.faculty_id}@university.edu`,
-          department: item.dept || 'General',
-          designation: item.designation || 'Assistant Professor',
-        }));
-        setData(formatted);
-        setFilteredData(formatted);
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Error fetching faculty list:", error);
-        toast.error("Failed to load faculty list");
-        setLoading(false);
-      });
-  }, [token]);
-
-  // Filter and search functionality
-  useEffect(() => {
-    let filtered = data.filter(faculty => {
-      const matchesSearch = 
-        faculty.facultyId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        faculty.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        faculty.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        faculty.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        faculty.email?.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesDepartment = departmentFilter === 'all' || faculty.department === departmentFilter;
-      
-      return matchesSearch && matchesDepartment;
-    });
-    
-    setFilteredData(filtered);
-  }, [searchTerm, departmentFilter, data]);
-
-  const handleNavigate = (path) => {
-    navigate(path);
-    setSidebarOpen(false);
-  };
-
-  // Get unique departments for filter
-  const departments = [...new Set(data.map(faculty => faculty.department))];
-
   // Export to CSV
   const handleExportCSV = () => {
     if (!filteredData?.length) {
@@ -131,6 +66,162 @@ const FacultyList = () => {
     URL.revokeObjectURL(url);
     toast.success("Faculty list exported successfully!");
   };
+  const token = localStorage.getItem('token');
+  const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [addFacultyOpen, setAddFacultyOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [isBulk, setIsBulk] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkSummary, setBulkSummary] = useState(null);
+
+  // ADD: faculty form state (already present but keep consistent)
+  const [facultyForm, setFacultyForm] = useState({
+    faculty_id: '',
+    faculty_name: '',
+    photo: null,
+    course_code: '',
+    subject_name: '',
+    email: '',
+    password: '', // Add password to state
+    degree: '',
+    semester: '',
+    semester_month: '',
+    dept: '',
+  });
+
+  // ADD: input handler
+  const handleFacultyInputChange = (e) => {
+    const { name, value, files, type, checked } = e.target;
+    if (name === "photo") {
+      setFacultyForm(prev => ({ ...prev, photo: files?.[0] || null }));
+    } else if (name === "bulkFile") {
+      setBulkFile(files?.[0] || null);
+    } else if (name === "isBulk") {
+      setIsBulk(checked);
+      setBulkSummary(null);
+    } else {
+      setFacultyForm(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  // ADD: submit handler (placeholder – adjust API if needed)
+  const handleAddFacultySubmit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      if (isBulk) {
+        if (!bulkFile) {
+          toast.warning("Select a file");
+          setSubmitting(false);
+          return;
+        }
+        const fd = new FormData();
+        fd.append("file", bulkFile);
+        const { data: summary } = await axios.post(
+          "http://localhost:7000/api/admin/upload-faculty",
+          fd,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setBulkSummary(summary);
+        toast.success("Bulk upload processed");
+      } else {
+        const fd = new FormData();
+        Object.entries(facultyForm).forEach(([k, v]) => {
+          if (k === "photo") { if (v) fd.append("photo", v); } else fd.append(k, v);
+        });
+        await axios.post("http://localhost:7000/api/admin/add-faculty", fd, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        toast.success("Faculty added");
+        setAddFacultyOpen(false);
+        // refresh
+        const response = await axios.get("http://localhost:7000/api/admin/faculty-list", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const formatted = response.data.map((item, index) => ({
+          id: index + 1,
+          facultyId: item.faculty_id,
+          name: item.faculty_name,
+          photo: item.photo,
+          code: item.course_code,
+          subject: item.subject_name,
+          email: item.email || `${item.faculty_id}@university.edu`,
+          department: item.dept || "General",
+          designation: item.designation || "Assistant Professor",
+        }));
+        setData(formatted);
+        setFilteredData(formatted);
+        setFacultyForm({
+          faculty_id: '',
+          faculty_name: '',
+          photo: null,
+          course_code: '',
+          subject_name: '',
+          email: '',
+          password: '',
+          degree: '',
+          semester: '',
+          semester_month: '',
+          dept: '',
+        });
+      }
+    } catch (err) {
+      console.error("Add/Bulk failed:", err);
+      toast.error(err?.response?.data?.message || "Failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // OPTIONAL: close on Escape
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') setAddFacultyOpen(false);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    axios
+      .get("http://localhost:7000/api/admin/faculty-list", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        }
+      })
+      .then((response) => {
+        const formatted = response.data.map((item, index) => ({
+          id: index + 1,
+          facultyId: item.faculty_id,
+          name: item.faculty_name,
+          photo: item.photo,
+          code: item.course_code,
+          subject: item.subject_name,
+          email: item.email || `${item.faculty_id}@university.edu`,
+          department: item.dept || 'General',
+          designation: item.designation || 'Assistant Professor',
+        }));
+        setData(formatted);
+        setFilteredData(formatted);
+        setTimeout(() => {
+          setLoading(false);
+        }, 300);
+      })
+      .catch((error) => {
+        console.error("Error fetching faculty list:", error);
+        toast.error("Failed to load faculty list");
+        setTimeout(() => {
+          setLoading(false);
+        }, 2000);
+      });
+  }, [token]);
+    // ...existing code...
 
   const handleViewDetails = (faculty) => {
     toast.info(`Viewing details for ${faculty.name}`);
@@ -150,7 +241,7 @@ const FacultyList = () => {
       renderCell: (params) => (
         <div className="flex items-center justify-center">
           <Avatar
-            src={params.value || `https://ui-avatars.com/api/?name=${params.row.name}&background=3b82f6&color=fff&size=50`}
+            src={params.value || `https://ui-avatars.com/api/?name=${params.row.name}&background=9333ea&color=fff&size=50`}
             alt={params.row.name}
             sx={{ 
               width: 50, 
@@ -170,8 +261,8 @@ const FacultyList = () => {
       flex: 1,
       renderCell: (params) => (
         <div className="flex items-center gap-2">
-          <div className="bg-blue-100 p-1 rounded">
-            <Users size={14} className="text-blue-600" />
+          <div className="bg-purple-100 p-1 rounded">
+            <Users size={14} className="text-purple-600" />
           </div>
           <span className="font-semibold text-gray-900">{params.value}</span>
         </div>
@@ -271,9 +362,10 @@ const FacultyList = () => {
   };
 
   const stats = getStats();
+  const departments = [...new Set(data.map(faculty => faculty.department))];
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/20 to-indigo-50/30">
+    <div className="flex min-h-screen bg-white">
       {/* Sidebar */}
       <div className="hidden lg:flex flex-col fixed top-0 left-0 w-64 h-screen bg-white shadow-xl z-50 border-r border-gray-200">
         <AdminNavbar />
@@ -298,7 +390,7 @@ const FacultyList = () => {
       <div className="flex-1 px-6 pt-6 pb-10 lg:ml-64 overflow-y-auto" style={{ maxHeight: "100vh" }}>
         {/* Header Section */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 mb-8 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 px-6 py-8">
+          <div className="bg-purple-600 px-6 py-8">
             <div className="flex flex-wrap justify-between items-center">
               <div className="flex items-center gap-4">
                 <button
@@ -315,7 +407,7 @@ const FacultyList = () => {
                     <h1 className="text-2xl sm:text-3xl font-bold text-white">
                       Faculty Directory
                     </h1>
-                    <p className="text-blue-100 mt-1">
+                    <p className="text-purple-100 mt-1">
                       Manage and view all faculty members and their details
                     </p>
                   </div>
@@ -324,7 +416,7 @@ const FacultyList = () => {
               <div className="flex items-center gap-4 mt-4 lg:mt-0">
                 <button
                   className="bg-white/20 hover:bg-white/30 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 border border-white/30"
-                  onClick={() => toast.info("Add faculty feature coming soon!")}
+                  onClick={() => setAddFacultyOpen(true)}
                 >
                   <UserPlus size={18} />
                   Add Faculty
@@ -338,8 +430,8 @@ const FacultyList = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-4">
-                  <div className="bg-blue-100 p-3 rounded-lg">
-                    <Users size={24} className="text-blue-600" />
+                  <div className="bg-purple-100 p-3 rounded-lg">
+                    <Users size={24} className="text-purple-600" />
                   </div>
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Total Faculty</p>
@@ -358,21 +450,21 @@ const FacultyList = () => {
                   </div>
                 </div>
               </div>
-              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              {/* <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-4">
                   <div className="bg-green-100 p-3 rounded-lg">
                     <GraduationCap size={24} className="text-green-600" />
                   </div>
                   <div>
-                    <p className="text-gray-600 text-sm font-medium">Subjects</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.uniqueSubjects}</p>
+                    <p className="text-gray-600 text-sm font-medium">Degrees</p>
+                    <p className="text-2xl font-bold text-gray-900">{new Set(data.map(f => f.degree)).size}</p>
                   </div>
                 </div>
-              </div>
+              </div> */}
               <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-4">
-                  <div className="bg-orange-100 p-3 rounded-lg">
-                    <TrendingUp size={24} className="text-orange-600" />
+                  <div className="bg-purple-100 p-3 rounded-lg">
+                    <TrendingUp size={24} className="text-purple-600" />
                   </div>
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Departments</p>
@@ -384,19 +476,17 @@ const FacultyList = () => {
           </div>
         </div>
 
-        {/* Filters and Search */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 mb-8 overflow-hidden">
-          <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <Filter size={20} className="text-blue-600" />
-              Search & Filter Faculty
-            </h2>
-          </div>
-          
-          <div className="p-6">
+        {/* Faculty List Table */}
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+          <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Users size={20} className="text-purple-600" />
+                Faculty Members ({filteredData.length} of {data.length})
+              </h3>
+              <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700">Search Faculty</label>
                 <div className="relative">
                   <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
@@ -404,17 +494,16 @@ const FacultyList = () => {
                     placeholder="Search by name, ID, course, subject, or email..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 bg-gray-50 focus:bg-white"
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-300 bg-gray-50 focus:bg-white"
                   />
                 </div>
               </div>
               
               <div className="space-y-2">
-                <label className="block text-sm font-semibold text-gray-700">Filter by Department</label>
                 <select
                   value={departmentFilter}
                   onChange={(e) => setDepartmentFilter(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300 bg-gray-50 focus:bg-white"
+                  className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-300 bg-gray-50 focus:bg-white"
                 >
                   <option value="all">All Departments</option>
                   {departments.map(dept => (
@@ -424,21 +513,13 @@ const FacultyList = () => {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Faculty List Table */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Users size={20} className="text-blue-600" />
-                Faculty Members ({filteredData.length} of {data.length})
-              </h3>
+
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleExportCSV}
                   disabled={!filteredData.length}
-                  className={`bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 ${!filteredData.length ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 ${!filteredData.length ? 'opacity-50 cursor-not-allowed' : ''}`}
                   title={!filteredData.length ? 'No data to export' : 'Export to CSV'}
                 >
                   <Download size={16} />
@@ -466,8 +547,9 @@ const FacultyList = () => {
                 initialState={{
                   pagination: { paginationModel: { page: 0, pageSize: 10 } }
                 }}
-                disableRowSelectionOnClick
-                hideFooterSelectedRowCount
+                checkboxSelection
+                disableRowSelectionOnClick={false}
+                hideFooterSelectedRowCount={false}
                 rowHeight={90}
                 sx={{
                   border: 0,
@@ -506,29 +588,318 @@ const FacultyList = () => {
                     backgroundColor: '#ffffff',
                   },
                   '& .MuiCircularProgress-root': {
-                    color: '#3b82f6',
+                    color: '#9333EA',
+                  },
+                  // Customize selection colors to purple theme
+                  '& .MuiCheckbox-root': {
+                    color: '#9333EA',
+                    '&.Mui-checked': {
+                      color: '#9333EA',
+                    },
+                  },
+                  '& .MuiDataGrid-row.Mui-selected': {
+                    backgroundColor: '#f3f0ff',
+                    '&:hover': {
+                      backgroundColor: '#e9d5ff',
+                    },
+                  },
+                  '& .MuiDataGrid-footerContainer .MuiTablePagination-displayedRows': {
+                    color: '#374151',
+                  },
+                  '& .MuiChip-root': {
+                    backgroundColor: '#9333EA',
+                    color: '#ffffff',
+                    '& .MuiChip-deleteIcon': {
+                      color: '#ffffff',
+                    },
+                  },
+                  // Additional styling for selection badge/button
+                  '& .MuiDataGrid-selectedRowCount': {
+                    backgroundColor: '#9333EA',
+                    color: '#ffffff',
+                    borderRadius: '16px',
+                    padding: '4px 12px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                  },
+                  '& .MuiDataGrid-footerContainer .MuiTablePagination-selectLabel': {
+                    color: '#374151',
+                  },
+                  '& .MuiDataGrid-footerContainer .MuiTablePagination-input': {
+                    color: '#374151',
+                  },
+                  '& .MuiDataGrid-footerContainer .MuiSelect-root': {
+                    color: '#9333EA',
+                  },
+                  // Style the selection count specifically
+                  '& .MuiDataGrid-selectedRowCount, & [data-testid="selected-row-count"]': {
+                    backgroundColor: '#9333EA !important',
+                    color: '#ffffff !important',
+                    borderRadius: '16px !important',
+                    padding: '4px 12px !important',
+                    fontSize: '14px !important',
+                    fontWeight: 600,
                   },
                 }}
               />
             </Paper>
           </div>
         </div>
-      </div>
 
-      <ToastContainer 
-        position="top-right" 
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        className="toast-container"
-      />
+        {/* Add Faculty Modal */}
+        {addFacultyOpen && (
+          <div
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
+              <button
+                className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-xl"
+                onClick={() => setAddFacultyOpen(false)}
+                aria-label="Close"
+                type="button"
+              >
+                &times;
+              </button>
+              <h2 className="text-2xl font-bold mb-6 text-purple-700">Add Faculty</h2>
+              <form onSubmit={handleAddFacultySubmit} className="space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <input
+                    type="checkbox"
+                    id="isBulk"
+                    name="isBulk"
+                    checked={isBulk}
+                    onChange={handleFacultyInputChange}
+                    className="h-4 w-4"
+                  />
+                  <label htmlFor="isBulk" className="text-sm font-medium text-gray-700">
+                    Bulk Upload (XLSX / CSV)
+                  </label>
+                </div>
+
+                {isBulk ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block font-semibold mb-1">Upload File</label>
+                      <input
+                        type="file"
+                        name="bulkFile"
+                        accept=".xlsx,.xls,.csv"
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                      <p className="text-xs text-gray-500 mt-2">
+                        Required headers: faculty_id, faculty_name, email, password, course_code, subject_name, degree, semester, semester_month, dept
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Generate sample file download
+                          const sample =
+`faculty_id,faculty_name,email,password,course_code,subject_name,degree,semester,semester_month,dept
+FA101,John Doe,john.doe@example.com,Pass@123,22IT201,Data Structures,B.Tech,Semester 3,Nov,CSE
+FA102,Jane Smith,jane.smith@example.com,Pass@123,22IT202,Algorithms,B.Tech,Semester 3,Nov,CSE`;
+                          const blob = new Blob(["\uFEFF" + sample], { type: "text/csv;charset=utf-8;" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = "faculty_bulk_sample.csv";
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}
+                        className="mt-3 text-sm text-purple-600 hover:underline"
+                      >
+                        Download sample CSV
+                      </button>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-purple-600 text-white font-semibold py-2 rounded-lg hover:bg-purple-700 disabled:opacity-60"
+                    >
+                      {submitting ? "Uploading..." : "Upload"}
+                    </button>
+
+                    {bulkSummary && (
+                      <div className="mt-4 border rounded-lg p-4 bg-gray-50 text-sm">
+                        <p className="font-semibold mb-2">Summary</p>
+                        <ul className="space-y-1">
+                          <li>Total rows: {bulkSummary.total}</li>
+                          <li>Processed: {bulkSummary.processed}</li>
+                          <li>Created: {bulkSummary.created}</li>
+                          <li>Duplicate faculty_id: {bulkSummary.skipped_duplicate_faculty_id}</li>
+                          <li>Duplicate email: {bulkSummary.skipped_duplicate_email}</li>
+                          <li>Errors: {bulkSummary.errors}</li>
+                        </ul>
+                        <details className="mt-2">
+                          <summary className="cursor-pointer text-purple-600">Row details</summary>
+                          <pre className="text-xs mt-2 max-h-48 overflow-auto bg-white p-2 rounded">{JSON.stringify(bulkSummary.rows, null, 2)}</pre>
+                        </details>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // ...existing single add form fields (unchanged)...
+                  <>
+                    <div>
+                      <label className="block font-semibold mb-1">Faculty ID</label>
+                      <input
+                        type="text"
+                        name="faculty_id"
+                        value={facultyForm.faculty_id}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Faculty Name</label>
+                      <input
+                        type="text"
+                        name="faculty_name"
+                        value={facultyForm.faculty_name}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">
+                        Photo <span className="text-xs text-gray-400">(optional)</span>
+                      </label>
+                      <input
+                        type="file"
+                        name="photo"
+                        accept="image/*"
+                        onChange={handleFacultyInputChange}
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Course Code</label>
+                      <input
+                        type="text"
+                        name="course_code"
+                        value={facultyForm.course_code}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Subject Name</label>
+                      <input
+                        type="text"
+                        name="subject_name"
+                        value={facultyForm.subject_name}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={facultyForm.email}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Password</label>
+                      <input
+                        type="password"
+                        name="password"
+                        value={facultyForm.password}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-semibold mb-1">Degree</label>
+                        <input
+                          type="text"
+                          name="degree"
+                          value={facultyForm.degree}
+                          onChange={handleFacultyInputChange}
+                          required
+                          className="w-full border rounded-lg px-4 py-2"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-semibold mb-1">Semester</label>
+                        <input
+                          type="text"
+                          name="semester"
+                          value={facultyForm.semester}
+                          onChange={handleFacultyInputChange}
+                          required
+                          className="w-full border rounded-lg px-4 py-2"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Semester Month</label>
+                      <input
+                        type="text"
+                        name="semester_month"
+                        value={facultyForm.semester_month}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold mb-1">Department</label>
+                      <input
+                        type="text"
+                        name="dept"
+                        value={facultyForm.dept}
+                        onChange={handleFacultyInputChange}
+                        required
+                        className="w-full border rounded-lg px-4 py-2"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-purple-600 text-white font-semibold py-2 rounded-lg mt-4 hover:bg-purple-700 transition-all disabled:opacity-60"
+                    >
+                      {submitting ? "Adding..." : "Add Faculty"}
+                    </button>
+                  </>
+                )}
+              </form>
+            </div>
+          </div>
+        )}
+
+        <ToastContainer 
+          position="top-right" 
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          className="toast-container"
+        />
+      </div>
     </div>
   );
-};
+}
 
 export default FacultyList;
+

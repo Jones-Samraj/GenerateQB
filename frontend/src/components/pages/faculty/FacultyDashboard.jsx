@@ -37,7 +37,7 @@ import {
 import { Imagecomp } from "../../images/Imagecomp";
 import { Drawer, Paper } from "@mui/material";
 import { useSelector, useDispatch } from "react-redux";
-import { setUser, setVettingId } from "../../../store/userSlice";
+import { setUser } from "../../../store/userSlice";
 import { DataGrid } from "@mui/x-data-grid";
 import { useNavigate, useLocation } from "react-router-dom";
 import { toast, ToastContainer } from "react-toastify";
@@ -101,28 +101,6 @@ const FacultyDashboard = () => {
               ...facultyData,
             })
           );
-
-          if (facultyData.faculty_id) {
-            try {
-              const vettingResponse = await axios.get(
-                "http://localhost:7000/api/faculty/get-vetting-id",
-                {
-                  params: { faculty_id: facultyData.faculty_id },
-                  headers: { Authorization: `Bearer ${token}` },
-                }
-              );
-
-              if (vettingResponse.data?.vetting_id) {
-                dispatch(setVettingId(vettingResponse.data.vetting_id));
-              } else {
-                console.warn("No vetting ID found for faculty");
-                dispatch(setVettingId(null));
-              }
-            } catch (err) {
-              console.error("Error fetching vetting ID:", err);
-              dispatch(setVettingId(null));
-            }
-          }
         }
       } catch (error) {
         console.error("Error fetching faculty data:", error);
@@ -137,7 +115,7 @@ const FacultyDashboard = () => {
   useEffect(() => {
     if (courseCode) {
       axios
-        .get("http://localhost:7000/api/faculty/faculty-question-stats", {
+        .get("http://localhost:7000/api/faculty/faculty-question-status", {
           params: { course_code: courseCode },
           headers: { Authorization: `Bearer ${token}` },
         })

@@ -126,7 +126,7 @@ const ManageQB = () => {
       setLoading(true);
       axios
         .get(
-          `http://localhost:7000/api/admin/faculty-question-list?course_code=${courseCode}`,
+          `http://localhost:7000/api/faculty/faculty-question-list?course_code=${courseCode}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -883,22 +883,6 @@ const ManageQB = () => {
                         </div>
                       )}
 
-                      {selectedQuestion.figure && (
-                        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-                          <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <Eye size={20} className="text-purple-600" />
-                            Figure
-                          </h3>
-                          <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                            <img
-                              src={`http://localhost:7000${selectedQuestion.figure}`}
-                              alt="Question Figure"
-                              className="max-w-full h-auto rounded-lg shadow-md"
-                            />
-                          </div>
-                        </div>
-                      )}
-
                       <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
                         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                           <Calendar size={20} className="text-gray-600" />
@@ -1411,23 +1395,6 @@ const ManageQB = () => {
                         />
                       </div>
                     </div>
-
-                    {/* Current Figure */}
-                    {selectedQuestion.figure && (
-                      <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                          <Eye size={20} className="text-purple-600" />
-                          Current Figure
-                        </h3>
-                        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                          <img
-                            src={`http://localhost:7000${selectedQuestion.figure}`}
-                            alt="Figure"
-                            className="max-w-full h-auto max-h-60 rounded-lg shadow-md"
-                          />
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

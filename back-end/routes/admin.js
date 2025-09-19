@@ -3,6 +3,194 @@ const router = express.Router();
 const seedrandom = require("seedrandom");
 const db = require("../db");
 const verifyToken = require("./jwtMiddleware");
+const path = require("path");
+const multer = require("multer");
+const fs = require("fs");
+const xlsx = require("xlsx"); // ADD
+
+// Configure multer for faculty photo uploads
+const facultyUploadDir = path.join(__dirname, "..", "uploads", "faculty");
+if (!fs.existsSync(facultyUploadDir)) {
+  fs.mkdirSync(facultyUploadDir, { recursive: true });
+}
+
+const imageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, facultyUploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'faculty-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+// Image-only uploader (used in /add-faculty)
+const uploadPhoto = multer({
+  storage: imageStorage,
+  fileFilter: function (_req, file, cb) {
+    if (file.mimetype.startsWith('image/')) return cb(null, true);
+    cb(new Error('Only image files are allowed!'));
+  }
+});
+
+// NEW: bulk file storage (CSV/XLSX)
+const bulkDir = path.join(__dirname, "..", "uploads", "bulk");
+if (!fs.existsSync(bulkDir)) fs.mkdirSync(bulkDir, { recursive: true });
+
+const bulkStorage = multer.diskStorage({
+  destination: function (_req, _file, cb) {
+    cb(null, bulkDir);
+  },
+  filename: function (_req, file, cb) {
+    const base = file.originalname.replace(/\s+/g, '_').replace(/\.(xlsx|csv|xls)$/i,'')
+    cb(null, base + '-' + Date.now() + path.extname(file.originalname));
+  }
+});
+
+const bulkUpload = multer({
+  storage: bulkStorage,
+  fileFilter: function (_req, file, cb) {
+    const allowed = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Only CSV or Excel files are allowed!'));
+  }
+});
+
+// Helper to promisify connection.query for async/await
+const queryAsync = (connection, sql, params) => {
+  return new Promise((resolve, reject) => {
+    connection.query(sql, params, (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+};
+
+// Add faculty endpoint
+router.post('/add-faculty', verifyToken, uploadPhoto.single('photo'), async (req, res) => {
+  try {
+    const {
+      faculty_id,
+      faculty_name,
+      course_code,
+      subject_name,
+      email,
+      password,
+      degree,
+      semester,
+      semester_month,
+      dept
+    } = req.body;
+
+    // Validate required fields
+    if (!faculty_id || !faculty_name || !email || !password || !course_code || 
+        !subject_name || !degree || !semester || !semester_month || !dept) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Use the 'db' object directly for the transaction
+    const connection = db; 
+
+    // Check for duplicates
+    const existingFaculty = await queryAsync(connection, 'SELECT id FROM faculty WHERE faculty_id = ?', [faculty_id]);
+    if (existingFaculty.length > 0) {
+      return res.status(400).json({ message: 'Faculty ID already exists' });
+    }
+
+    const existingEmail = await queryAsync(connection, 'SELECT id FROM users WHERE email = ?', [email]);
+    if (existingEmail.length > 0) {
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    // Get role ID for faculty
+    const roles = await queryAsync(connection, 'SELECT id FROM role WHERE role = "faculty"');
+    if (roles.length === 0) {
+      connection.release();
+      return res.status(500).json({ message: 'Faculty role not defined in system' });
+    }
+    const facultyRoleId = roles[0].id;
+
+    // Find or create Department
+    let deptResult = await queryAsync(connection, 'SELECT id FROM department WHERE department = ?', [dept]);
+    let departmentId;
+    if (deptResult.length === 0) {
+      const insertResult = await queryAsync(connection, 'INSERT INTO department (department) VALUES (?)', [dept]);
+      departmentId = insertResult.insertId;
+    } else {
+      departmentId = deptResult[0].id;
+    }
+
+    // Find or create Course
+    let courseResult = await queryAsync(connection, 'SELECT id FROM course WHERE course_code = ? AND subject = ?', [course_code, subject_name]);
+    let courseId;
+    if (courseResult.length === 0) {
+      const insertResult = await queryAsync(connection, 'INSERT INTO course (course_code, subject) VALUES (?, ?)', [course_code, subject_name]);
+      courseId = insertResult.insertId;
+    } else {
+      courseId = courseResult[0].id;
+    }
+
+    // Find or create Degree
+    let degreeResult = await queryAsync(connection, 'SELECT id FROM degree WHERE degree = ?', [degree]);
+    let degreeId;
+    if (degreeResult.length === 0) {
+      const insertResult = await queryAsync(connection, 'INSERT INTO degree (degree) VALUES (?)', [degree]);
+      degreeId = insertResult.insertId;
+    } else {
+      degreeId = degreeResult[0].id;
+    }
+
+    // Find or create Semester
+    let semesterResult = await queryAsync(connection, 'SELECT id FROM semester WHERE semester = ? AND month = ?', [semester, semester_month]);
+    let semesterId;
+    if (semesterResult.length === 0) {
+      const insertResult = await queryAsync(connection, 'INSERT INTO semester (semester, month) VALUES (?, ?)', [semester, semester_month]);
+      semesterId = insertResult.insertId;
+    } else {
+      semesterId = semesterResult[0].id;
+    }
+
+    // Start transaction
+    await new Promise((resolve, reject) => connection.beginTransaction(err => err ? reject(err) : resolve()));
+
+    try {
+      // Create user account (storing password without encryption as requested)
+      const userResult = await queryAsync(connection, 'INSERT INTO users (email, password, role) VALUES (?, ?, ?)', [email, password, facultyRoleId]);
+      const userId = userResult.insertId;
+
+      // Get photo path if uploaded
+      const photoPath = req.file ? req.file.path.replace(/\\/g, '/') : null;
+
+      // Create faculty record
+      const facultyResult = await queryAsync(connection, 'INSERT INTO faculty (faculty_id, name, photo, user_id) VALUES (?, ?, ?, ?)', [faculty_id, faculty_name, photoPath, userId]);
+      const facultyDbId = facultyResult.insertId;
+
+      // Link faculty to course
+      await queryAsync(connection, `INSERT INTO faculty_course (faculty, course, dept, degree, semester, status) VALUES (?, ?, ?, ?, ?, 'active')`, [facultyDbId, courseId, departmentId, degreeId, semesterId]);
+
+      // Commit transaction
+      await new Promise((resolve, reject) => connection.commit(err => err ? reject(err) : resolve()));
+
+      res.status(201).json({ 
+        message: 'Faculty added successfully',
+        facultyId: faculty_id
+      });
+    } catch (error) {
+      // Rollback transaction if any error occurs
+      await new Promise((resolve, reject) => connection.rollback(() => resolve()));
+      throw error; // Let the outer catch handle it
+    }
+  } catch (error) {
+    console.error('Error adding faculty:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+  // We no longer release the connection as it's a shared global object
+});
+
 
 router.get("/generated-qb-stats", verifyToken, (req, res) => {
   const weeklyQuery = `
@@ -55,25 +243,34 @@ router.get("/generate-history", verifyToken, (req, res) => {
 });
 
 router.get("/faculty-list", verifyToken, (req, res) => {
-  const query = "SELECT * FROM faculty_list";
+  const query = `
+    SELECT 
+      u.faculty_id,
+      u.name AS faculty_name,
+      u.photo,
+      u.email,
+      c.course_code,
+      c.subject AS subject_name,
+      d.degree,
+      dept.department AS dept,
+      s.semester,
+      s.month AS semester_month,
+      fc.status
+    FROM users u
+    INNER JOIN faculty_course fc ON fc.faculty = u.id
+    INNER JOIN course c ON c.id = fc.course
+    INNER JOIN degree d ON d.id = fc.degree
+    INNER JOIN department dept ON dept.id = fc.dept
+    INNER JOIN semester s ON s.id = fc.semester
+    ORDER BY u.name ASC
+  `;
+
   db.query(query, (err, results) => {
     if (!err) res.status(200).send(results);
     else return res.status(400).send(err);
   });
 });
 
-router.get("/faculty-question-list", verifyToken, (req, res) => {
-  const { course_code } = req.query;
-  if (!course_code)
-    return res.status(400).json({ error: "Course code is required" });
-
-  const query =
-    "SELECT faculty_id,course_code,mark,remarks,question_id,question,unit,updated_at,status,topic  FROM question_status WHERE course_code = ?";
-  db.query(query, [course_code], (err, results) => {
-    if (!err) res.status(200).json(results);
-    else res.status(400).json({ error: err.message });
-  });
-});
 
 router.post("/generate-history", verifyToken, (req, res) => {
   const { course_code, subject_name, exam_name } = req.body;
@@ -107,20 +304,19 @@ router.post("/generate-history", verifyToken, (req, res) => {
 
 router.get("/question-history", verifyToken, (req, res) => {
   const query = `
-      SELECT 
-        q.id AS id,
-        fl.faculty_id,
-        fl.course_code,
-        q.unit,
-        q.created_at ,
-        q.status
-      FROM 
-        qb.faculty_list AS fl 
-      JOIN 
-        qb.question_status AS q 
-      ON 
-        fl.course_code = q.course_code
-    `;
+    SELECT 
+      q.id AS id,
+      f.faculty_id,
+      c.course_code,
+      q.unit,
+      q.created_at,
+      q.status
+    FROM qb.question_status q
+    JOIN qb.course c ON q.course_code = c.course_code
+    JOIN qb.faculty_course fc ON fc.course = c.id
+    JOIN qb.faculty f ON f.id = fc.faculty
+  `;
+
   db.query(query, (err, results) => {
     if (!err) res.status(200).send(results);
     else return res.status(400).send(err);
@@ -822,12 +1018,24 @@ router.post("/question-history", verifyToken, (req, res) => {
 router.get("/get-faculty-subjects", verifyToken, (req, res) => {
   const { degree } = req.query;
 
-  const query =
-    "SELECT course_code, subject_name FROM faculty_list WHERE degree = ?";
+  if (!degree) {
+    return res.status(400).json({ error: "Degree is required" });
+  }
+
+  const query = `
+    SELECT DISTINCT 
+      c.course_code, 
+      c.subject AS subject_name
+    FROM faculty_course fc
+    JOIN course c ON c.id = fc.course
+    JOIN degree dg ON dg.id = fc.degree
+    WHERE dg.degree = ?
+  `;
+
   db.query(query, [degree], (err, results) => {
     if (err) {
       console.error("Error fetching faculty subjects:", err);
-      return res.status(500).json({ error: "Database error" });
+      return res.status(500).json({ error: "Database error", details: err.message });
     }
     res.status(200).json(results);
   });
@@ -905,25 +1113,23 @@ router.post("/add-vetting", verifyToken, (req, res) => {
 });
 
 // Get all vetting assignments with faculty names
-router.get('/vetting-list', async (req, res) => {
-  try {
-    const query = `
-      SELECT 
-        v.faculty_id, f1.faculty_name AS faculty_name,
-        v.vetting_id, f2.faculty_name AS vetting_name
-      FROM vetting v
-      LEFT JOIN faculty_list f1 ON v.faculty_id = f1.faculty_id
-      LEFT JOIN faculty_list f2 ON v.vetting_id = f2.faculty_id
-    `;
-    db.query(query, (err, rows) => {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to fetch vetting' });
-      }
-      res.json(rows);
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to fetch vetting' });
-  }
+router.get("/vetting-list", (req, res) => {
+  const query = `
+    SELECT 
+      v.faculty_id, f1.faculty_id AS faculty_code, f1.name AS faculty_name,
+      v.vetting_id, f2.faculty_id AS vetting_code, f2.name AS vetting_name
+    FROM vetting v
+    JOIN faculty f1 ON v.faculty_id = f1.faculty_id
+    JOIN faculty f2 ON v.vetting_id = f2.faculty_id
+  `;
+
+  db.query(query, (err, rows) => {
+    if (err) {
+      console.error("Error fetching vetting list:", err);
+      return res.status(500).json({ error: "Failed to fetch vetting", details: err.message });
+    }
+    res.status(200).json(rows);
+  });
 });
 
 // Update a vetting assignment
@@ -959,45 +1165,219 @@ router.delete('/vetting-list', verifyToken, (req, res) => {
 });
 
 // Get all unique departments, optionally filtered by degree
-router.get("/departments", (req, res) => {
+router.get("/departments", verifyToken, (req, res) => {
   const { degree } = req.query;
-  let query = "SELECT DISTINCT dept FROM faculty_list";
+  let query = `
+    SELECT DISTINCT dept.department 
+    FROM department dept
+  `;
   let params = [];
+
   if (degree) {
-    query += " WHERE degree = ?";
+    query += `
+      JOIN faculty_course fc ON fc.dept = dept.id
+      JOIN degree d ON d.id = fc.degree
+      WHERE d.degree = ?
+    `;
     params.push(degree);
   }
+
   db.query(query, params, (err, results) => {
     if (err) {
       return res.status(500).json({ error: "Database error" });
     }
-    res.status(200).json(results.map(row => row.dept));
+    res.status(200).json(results.map(row => row.department));
   });
 });
 
+
 // Get all faculty for selected departments and degree (multi-select support)
-router.get("/faculty-list-by-dept", (req, res) => {
+router.get("/faculty-list-by-dept", verifyToken, (req, res) => {
   const { dept, degree } = req.query;
+  
   if (!degree) {
     return res.status(400).json({ error: "Degree is required" });
   }
 
-  let query = "SELECT faculty_id, faculty_name, dept FROM faculty_list WHERE degree = ?";
+  let query = `
+    SELECT DISTINCT 
+      f.faculty_id AS faculty_id, 
+      f.name AS faculty_name, 
+      d.department AS dept
+    FROM faculty f
+    JOIN faculty_course fc ON f.id = fc.faculty
+    JOIN degree dg ON dg.id = fc.degree
+    JOIN department d ON d.id = fc.dept
+    WHERE dg.degree = ?
+  `;
+  
   let params = [degree];
 
-  // Support multi-select: dept can be a comma-separated string
+  // Handle department filter
   if (dept && dept !== "ALL") {
-    const depts = dept.split(",").map(d => d.trim());
-    query += " AND dept IN (" + depts.map(() => "?").join(",") + ")";
-    params = params.concat(depts);
+    const depts = dept.split(",").map(d => d.trim()).filter(d => d !== "");
+    if (depts.length > 0) {
+      query += " AND d.department IN (" + depts.map(() => "?").join(",") + ")";
+      params = params.concat(depts);
+    }
   }
+
+  query += " ORDER BY f.name";
 
   db.query(query, params, (err, results) => {
     if (err) {
-      return res.status(500).json({ error: "Database error" });
+      console.error("Database error details:", err);
+      return res.status(500).json({ error: "Database error", details: err.message });
     }
     res.status(200).json(results);
   });
+});
+
+// === BULK FACULTY UPLOAD (XLSX / CSV) ===
+// Expected columns (case-insensitive):
+// faculty_id, faculty_name, email, password, course_code, subject_name, degree, semester, semester_month, dept, (optional) photo_filename
+router.post("/upload-faculty", verifyToken, bulkUpload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ message: "File is required" });
+
+  const filePath = req.file.path;
+  const summary = {
+    total: 0,
+    processed: 0,
+    created: 0,
+    skipped_duplicate_faculty_id: 0,
+    skipped_duplicate_email: 0,
+    errors: 0,
+    rows: []
+  };
+
+  try {
+    const wb = xlsx.readFile(filePath);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(ws, { defval: "" });
+    summary.total = rows.length;
+
+    const connection = db;
+
+    // Helper re-use
+    const selectOne = async (sql, params=[]) => await queryAsync(connection, sql, params);
+    const firstId = (rows) => rows?.[0]?.id;
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const rowNum = i + 2; // account for header
+      const clean = (v) => (v ?? "").toString().trim();
+
+      const faculty_id = clean(r.faculty_id);
+      const faculty_name = clean(r.faculty_name);
+      const email = clean(r.email);
+      const password = clean(r.password);
+      const course_code = clean(r.course_code);
+      const subject_name = clean(r.subject_name);
+      const degree = clean(r.degree);
+      const semester = clean(r.semester);
+      const semester_month = clean(r.semester_month);
+      const dept = clean(r.dept);
+
+      if (!faculty_id || !faculty_name || !email || !password || !course_code || !subject_name || !degree || !semester || !semester_month || !dept) {
+        summary.errors++;
+        summary.rows.push({ row: rowNum, status: "error", reason: "Missing required fields" });
+        continue;
+      }
+
+      try {
+        // Duplicate checks
+        const dupFaculty = await selectOne("SELECT id FROM faculty WHERE faculty_id = ? LIMIT 1", [faculty_id]);
+        if (dupFaculty.length) {
+          summary.skipped_duplicate_faculty_id++;
+          summary.rows.push({ row: rowNum, status: "skipped", reason: "faculty_id exists" });
+          continue;
+        }
+        const dupEmail = await selectOne("SELECT id FROM users WHERE email = ? LIMIT 1", [email]);
+        if (dupEmail.length) {
+          summary.skipped_duplicate_email++;
+          summary.rows.push({ row: rowNum, status: "skipped", reason: "email exists" });
+          continue;
+        }
+
+        // Get role
+        const roleRow = await selectOne('SELECT id FROM role WHERE role = "faculty" LIMIT 1');
+        if (!roleRow.length) {
+          summary.errors++;
+          summary.rows.push({ row: rowNum, status: "error", reason: "faculty role missing" });
+          continue;
+        }
+        const roleId = roleRow[0].id;
+
+        // FK helpers
+        const upsertSingle = async (table, col, value) => {
+          const found = await selectOne(`SELECT id FROM ${table} WHERE ${col} = ? LIMIT 1`, [value]);
+            if (found.length) return found[0].id;
+          const ins = await queryAsync(connection, `INSERT INTO ${table} (${col}) VALUES (?)`, [value]);
+          return ins.insertId;
+        };
+        const upsertSemester = async (sem, month) => {
+          const found = await selectOne("SELECT id FROM semester WHERE semester = ? AND month = ? LIMIT 1", [sem, month]);
+          if (found.length) return found[0].id;
+          const ins = await queryAsync(connection, "INSERT INTO semester (semester, month) VALUES (?, ?)", [sem, month]);
+          return ins.insertId;
+        };
+        const upsertCourse = async (code, subj) => {
+          const found = await selectOne("SELECT id FROM course WHERE course_code = ? LIMIT 1", [code]);
+          if (found.length) return found[0].id;
+          const ins = await queryAsync(connection, "INSERT INTO course (course_code, subject) VALUES (?, ?)", [code, subj]);
+          return ins.insertId;
+        };
+
+        await new Promise((res, rej) => connection.beginTransaction(err => err ? rej(err) : res()));
+
+        try {
+          const userRes = await queryAsync(connection,
+            "INSERT INTO users (email, password, role) VALUES (?, ?, ?)",
+            [email, password, roleId] // Plain password as requested
+          );
+          const userId = userRes.insertId;
+
+            const photoPath = null; // bulk file photo not handled here
+          const facultyRes = await queryAsync(connection,
+            "INSERT INTO faculty (faculty_id, name, photo, user_id) VALUES (?, ?, ?, ?)",
+            [faculty_id, faculty_name, photoPath, userId]
+          );
+          const facultyPk = facultyRes.insertId;
+
+          const deptId = await upsertSingle("department", "department", dept);
+          const degreeId = await upsertSingle("degree", "degree", degree);
+          const semesterId = await upsertSemester(semester, semester_month);
+          const courseId = await upsertCourse(course_code, subject_name);
+
+          await queryAsync(connection,
+            `INSERT IGNORE INTO faculty_course (faculty, course, dept, degree, semester, status)
+             VALUES (?, ?, ?, ?, ?, 'active')`,
+            [facultyPk, courseId, deptId, degreeId, semesterId]
+          );
+
+          await new Promise((res, rej) => connection.commit(err => err ? rej(err) : res()));
+          summary.created++;
+          summary.rows.push({ row: rowNum, status: "created", faculty_id });
+        } catch (inner) {
+          await new Promise((res) => connection.rollback(() => res()));
+          summary.errors++;
+          summary.rows.push({ row: rowNum, status: "error", reason: inner.message });
+        }
+      } catch (logicErr) {
+        summary.errors++;
+        summary.rows.push({ row: rowNum, status: "error", reason: logicErr.message });
+      }
+
+      summary.processed++;
+    }
+
+    res.json(summary);
+  } catch (err) {
+    console.error("Bulk upload failed:", err);
+    res.status(500).json({ message: "Bulk upload failed", error: err.message });
+  } finally {
+    try { fs.unlinkSync(filePath); } catch {}
+  }
 });
 
 module.exports = router;
