@@ -56,7 +56,7 @@ const AdminDashboard = () => {
         axios.get("http://localhost:7000/api/admin/question-history", {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        axios.get("http://localhost:7000/api/admin/generated-qb-stats", {
+        axios.get("http://localhost:7000/api/admin/generated-qb-status", {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
         axios.get("http://localhost:7000/api/admin/faculty-list", {

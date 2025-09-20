@@ -70,129 +70,63 @@ const queryAsync = (connection, sql, params) => {
   });
 };
 
-// Add faculty endpoint
+// Add faculty endpoint - REWRITTEN TO ONLY USE 'users' TABLE
 router.post('/add-faculty', verifyToken, uploadPhoto.single('photo'), async (req, res) => {
   try {
     const {
-      faculty_id,
-      faculty_name,
-      course_code,
-      subject_name,
       email,
       password,
-      degree,
-      semester,
-      semester_month,
-      dept
+      faculty_id,
+      faculty_name,
     } = req.body;
 
-    // Validate required fields
-    if (!faculty_id || !faculty_name || !email || !password || !course_code || 
-        !subject_name || !degree || !semester || !semester_month || !dept) {
-      return res.status(400).json({ message: 'All fields are required' });
+    // Validate required fields for the new logic
+    if (!email || !password || !faculty_id || !faculty_name) {
+      return res.status(400).json({ message: 'Email, password, faculty ID, and name are required.' });
     }
 
-    // Use the 'db' object directly for the transaction
-    const connection = db; 
+    const connection = db;
 
-    // Check for duplicates
-    const existingFaculty = await queryAsync(connection, 'SELECT id FROM faculty WHERE faculty_id = ?', [faculty_id]);
-    if (existingFaculty.length > 0) {
-      return res.status(400).json({ message: 'Faculty ID already exists' });
+    // Check for duplicate email or faculty_id in the users table
+    const existingUser = await queryAsync(connection, 'SELECT email, faculty_id FROM users WHERE email = ? OR faculty_id = ?', [email, faculty_id]);
+    if (existingUser.length > 0) {
+      if (existingUser[0].email === email) {
+        return res.status(400).json({ message: 'Email already exists' });
+      }
+      if (existingUser[0].faculty_id === faculty_id) {
+        return res.status(400).json({ message: 'Faculty ID already exists' });
+      }
     }
 
-    const existingEmail = await queryAsync(connection, 'SELECT id FROM users WHERE email = ?', [email]);
-    if (existingEmail.length > 0) {
-      return res.status(400).json({ message: 'Email already exists' });
-    }
+    // Construct a relative URL path for the photo
+    const photoPath = req.file ? `/uploads/faculty/${req.file.filename}` : null;
 
-    // Get role ID for faculty
-    const roles = await queryAsync(connection, 'SELECT id FROM role WHERE role = "faculty"');
-    if (roles.length === 0) {
-      connection.release();
-      return res.status(500).json({ message: 'Faculty role not defined in system' });
-    }
-    const facultyRoleId = roles[0].id;
+    // Prepare data for insertion into the users table
+    const newUser = {
+      email,
+      password, // Storing plain text as per previous logic
+      role: null, // Setting role to null as requested
+      faculty_id,
+      name: faculty_name,
+      photo: photoPath
+    };
 
-    // Find or create Department
-    let deptResult = await queryAsync(connection, 'SELECT id FROM department WHERE department = ?', [dept]);
-    let departmentId;
-    if (deptResult.length === 0) {
-      const insertResult = await queryAsync(connection, 'INSERT INTO department (department) VALUES (?)', [dept]);
-      departmentId = insertResult.insertId;
-    } else {
-      departmentId = deptResult[0].id;
-    }
+    // Insert the new user record
+    const result = await queryAsync(connection, 'INSERT INTO users SET ?', newUser);
 
-    // Find or create Course
-    let courseResult = await queryAsync(connection, 'SELECT id FROM course WHERE course_code = ? AND subject = ?', [course_code, subject_name]);
-    let courseId;
-    if (courseResult.length === 0) {
-      const insertResult = await queryAsync(connection, 'INSERT INTO course (course_code, subject) VALUES (?, ?)', [course_code, subject_name]);
-      courseId = insertResult.insertId;
-    } else {
-      courseId = courseResult[0].id;
-    }
+    res.status(201).json({
+      message: 'User added successfully to the users table.',
+      userId: result.insertId
+    });
 
-    // Find or create Degree
-    let degreeResult = await queryAsync(connection, 'SELECT id FROM degree WHERE degree = ?', [degree]);
-    let degreeId;
-    if (degreeResult.length === 0) {
-      const insertResult = await queryAsync(connection, 'INSERT INTO degree (degree) VALUES (?)', [degree]);
-      degreeId = insertResult.insertId;
-    } else {
-      degreeId = degreeResult[0].id;
-    }
-
-    // Find or create Semester
-    let semesterResult = await queryAsync(connection, 'SELECT id FROM semester WHERE semester = ? AND month = ?', [semester, semester_month]);
-    let semesterId;
-    if (semesterResult.length === 0) {
-      const insertResult = await queryAsync(connection, 'INSERT INTO semester (semester, month) VALUES (?, ?)', [semester, semester_month]);
-      semesterId = insertResult.insertId;
-    } else {
-      semesterId = semesterResult[0].id;
-    }
-
-    // Start transaction
-    await new Promise((resolve, reject) => connection.beginTransaction(err => err ? reject(err) : resolve()));
-
-    try {
-      // Create user account (storing password without encryption as requested)
-      const userResult = await queryAsync(connection, 'INSERT INTO users (email, password, role) VALUES (?, ?, ?)', [email, password, facultyRoleId]);
-      const userId = userResult.insertId;
-
-      // Get photo path if uploaded
-      const photoPath = req.file ? req.file.path.replace(/\\/g, '/') : null;
-
-      // Create faculty record
-      const facultyResult = await queryAsync(connection, 'INSERT INTO faculty (faculty_id, name, photo, user_id) VALUES (?, ?, ?, ?)', [faculty_id, faculty_name, photoPath, userId]);
-      const facultyDbId = facultyResult.insertId;
-
-      // Link faculty to course
-      await queryAsync(connection, `INSERT INTO faculty_course (faculty, course, dept, degree, semester, status) VALUES (?, ?, ?, ?, ?, 'active')`, [facultyDbId, courseId, departmentId, degreeId, semesterId]);
-
-      // Commit transaction
-      await new Promise((resolve, reject) => connection.commit(err => err ? reject(err) : resolve()));
-
-      res.status(201).json({ 
-        message: 'Faculty added successfully',
-        facultyId: faculty_id
-      });
-    } catch (error) {
-      // Rollback transaction if any error occurs
-      await new Promise((resolve, reject) => connection.rollback(() => resolve()));
-      throw error; // Let the outer catch handle it
-    }
   } catch (error) {
-    console.error('Error adding faculty:', error);
+    console.error('Error adding user:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
-  // We no longer release the connection as it's a shared global object
 });
 
 
-router.get("/generated-qb-stats", verifyToken, (req, res) => {
+router.get("/generated-qb-status", verifyToken, (req, res) => {
   const weeklyQuery = `
       SELECT 
         YEARWEEK(date_time, 1) AS week, 
@@ -306,7 +240,7 @@ router.get("/question-history", verifyToken, (req, res) => {
   const query = `
     SELECT 
       q.id AS id,
-      f.faculty_id,
+      u.faculty_id,
       c.course_code,
       q.unit,
       q.created_at,
@@ -314,14 +248,17 @@ router.get("/question-history", verifyToken, (req, res) => {
     FROM qb.question_status q
     JOIN qb.course c ON q.course_code = c.course_code
     JOIN qb.faculty_course fc ON fc.course = c.id
-    JOIN qb.faculty f ON f.id = fc.faculty
+    JOIN qb.users u ON u.id = fc.faculty
   `;
 
   db.query(query, (err, results) => {
-    if (!err) res.status(200).send(results);
-    else return res.status(400).send(err);
+    if (err) {
+      return res.status(400).send(err);
+    }
+    res.status(200).send(results);
   });
 });
+
 
 router.get("/recently-added", verifyToken, (req, res) => {
   const query = `
@@ -1116,11 +1053,11 @@ router.post("/add-vetting", verifyToken, (req, res) => {
 router.get("/vetting-list", (req, res) => {
   const query = `
     SELECT 
-      v.faculty_id, f1.faculty_id AS faculty_code, f1.name AS faculty_name,
-      v.vetting_id, f2.faculty_id AS vetting_code, f2.name AS vetting_name
+      v.faculty_id, u1.faculty_id AS faculty_code, u1.name AS faculty_name,
+      v.vetting_id, u2.faculty_id AS vetting_code, u2.name AS vetting_name
     FROM vetting v
-    JOIN faculty f1 ON v.faculty_id = f1.faculty_id
-    JOIN faculty f2 ON v.vetting_id = f2.faculty_id
+    JOIN users u1 ON v.faculty_id = u1.faculty_id
+    JOIN users u2 ON v.vetting_id = u2.faculty_id
   `;
 
   db.query(query, (err, rows) => {
@@ -1131,6 +1068,7 @@ router.get("/vetting-list", (req, res) => {
     res.status(200).json(rows);
   });
 });
+
 
 // Update a vetting assignment
 router.put('/vetting-list', verifyToken, (req, res) => {
@@ -1194,23 +1132,23 @@ router.get("/departments", verifyToken, (req, res) => {
 // Get all faculty for selected departments and degree (multi-select support)
 router.get("/faculty-list-by-dept", verifyToken, (req, res) => {
   const { dept, degree } = req.query;
-  
+
   if (!degree) {
     return res.status(400).json({ error: "Degree is required" });
   }
 
   let query = `
     SELECT DISTINCT 
-      f.faculty_id AS faculty_id, 
-      f.name AS faculty_name, 
+      u.faculty_id AS faculty_id, 
+      u.name AS faculty_name, 
       d.department AS dept
-    FROM faculty f
-    JOIN faculty_course fc ON f.id = fc.faculty
+    FROM users u
+    JOIN faculty_course fc ON u.id = fc.faculty
     JOIN degree dg ON dg.id = fc.degree
     JOIN department d ON d.id = fc.dept
     WHERE dg.degree = ?
   `;
-  
+
   let params = [degree];
 
   // Handle department filter
@@ -1222,7 +1160,7 @@ router.get("/faculty-list-by-dept", verifyToken, (req, res) => {
     }
   }
 
-  query += " ORDER BY f.name";
+  query += " ORDER BY u.name";
 
   db.query(query, params, (err, results) => {
     if (err) {
@@ -1233,9 +1171,9 @@ router.get("/faculty-list-by-dept", verifyToken, (req, res) => {
   });
 });
 
-// === BULK FACULTY UPLOAD (XLSX / CSV) ===
-// Expected columns (case-insensitive):
-// faculty_id, faculty_name, email, password, course_code, subject_name, degree, semester, semester_month, dept, (optional) photo_filename
+
+// === BULK FACULTY UPLOAD (XLSX / CSV) - REWRITTEN TO ONLY USE 'users' TABLE ===
+// Expected columns: faculty_id, name, email, password
 router.post("/upload-faculty", verifyToken, bulkUpload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: "File is required" });
 
@@ -1244,10 +1182,9 @@ router.post("/upload-faculty", verifyToken, bulkUpload.single("file"), async (re
     total: 0,
     processed: 0,
     created: 0,
-    skipped_duplicate_faculty_id: 0,
-    skipped_duplicate_email: 0,
+    skipped_duplicate: 0,
     errors: 0,
-    rows: []
+    error_details: []
   };
 
   try {
@@ -1258,117 +1195,52 @@ router.post("/upload-faculty", verifyToken, bulkUpload.single("file"), async (re
 
     const connection = db;
 
-    // Helper re-use
-    const selectOne = async (sql, params=[]) => await queryAsync(connection, sql, params);
-    const firstId = (rows) => rows?.[0]?.id;
-
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const rowNum = i + 2; // account for header
+      const rowNum = i + 2; // For user-friendly error reporting (1-based index + header)
       const clean = (v) => (v ?? "").toString().trim();
 
       const faculty_id = clean(r.faculty_id);
-      const faculty_name = clean(r.faculty_name);
+      const name = clean(r.name || r.faculty_name); // Allow both 'name' and 'faculty_name' as headers
       const email = clean(r.email);
       const password = clean(r.password);
-      const course_code = clean(r.course_code);
-      const subject_name = clean(r.subject_name);
-      const degree = clean(r.degree);
-      const semester = clean(r.semester);
-      const semester_month = clean(r.semester_month);
-      const dept = clean(r.dept);
 
-      if (!faculty_id || !faculty_name || !email || !password || !course_code || !subject_name || !degree || !semester || !semester_month || !dept) {
+      summary.processed++;
+
+      if (!faculty_id || !name || !email || !password) {
         summary.errors++;
-        summary.rows.push({ row: rowNum, status: "error", reason: "Missing required fields" });
+        summary.error_details.push({ row: rowNum, status: "error", reason: "Missing required fields (faculty_id, name, email, password)." });
         continue;
       }
 
       try {
-        // Duplicate checks
-        const dupFaculty = await selectOne("SELECT id FROM faculty WHERE faculty_id = ? LIMIT 1", [faculty_id]);
-        if (dupFaculty.length) {
-          summary.skipped_duplicate_faculty_id++;
-          summary.rows.push({ row: rowNum, status: "skipped", reason: "faculty_id exists" });
-          continue;
-        }
-        const dupEmail = await selectOne("SELECT id FROM users WHERE email = ? LIMIT 1", [email]);
-        if (dupEmail.length) {
-          summary.skipped_duplicate_email++;
-          summary.rows.push({ row: rowNum, status: "skipped", reason: "email exists" });
+        // Check for duplicate email or faculty_id in the users table
+        const existingUser = await queryAsync(connection, 'SELECT email, faculty_id FROM users WHERE email = ? OR faculty_id = ?', [email, faculty_id]);
+        if (existingUser.length > 0) {
+          summary.skipped_duplicate++;
+          const reason = existingUser[0].email === email ? `Email '${email}' already exists.` : `Faculty ID '${faculty_id}' already exists.`;
+          summary.error_details.push({ row: rowNum, status: "skipped", reason: reason });
           continue;
         }
 
-        // Get role
-        const roleRow = await selectOne('SELECT id FROM role WHERE role = "faculty" LIMIT 1');
-        if (!roleRow.length) {
-          summary.errors++;
-          summary.rows.push({ row: rowNum, status: "error", reason: "faculty role missing" });
-          continue;
-        }
-        const roleId = roleRow[0].id;
-
-        // FK helpers
-        const upsertSingle = async (table, col, value) => {
-          const found = await selectOne(`SELECT id FROM ${table} WHERE ${col} = ? LIMIT 1`, [value]);
-            if (found.length) return found[0].id;
-          const ins = await queryAsync(connection, `INSERT INTO ${table} (${col}) VALUES (?)`, [value]);
-          return ins.insertId;
-        };
-        const upsertSemester = async (sem, month) => {
-          const found = await selectOne("SELECT id FROM semester WHERE semester = ? AND month = ? LIMIT 1", [sem, month]);
-          if (found.length) return found[0].id;
-          const ins = await queryAsync(connection, "INSERT INTO semester (semester, month) VALUES (?, ?)", [sem, month]);
-          return ins.insertId;
-        };
-        const upsertCourse = async (code, subj) => {
-          const found = await selectOne("SELECT id FROM course WHERE course_code = ? LIMIT 1", [code]);
-          if (found.length) return found[0].id;
-          const ins = await queryAsync(connection, "INSERT INTO course (course_code, subject) VALUES (?, ?)", [code, subj]);
-          return ins.insertId;
+        // Prepare data for insertion into the users table
+        const newUser = {
+          email,
+          password, // Storing plain text as per previous logic
+          role: null, // Setting role to null as requested
+          faculty_id,
+          name,
+          photo: null // Photo is not handled in bulk upload
         };
 
-        await new Promise((res, rej) => connection.beginTransaction(err => err ? rej(err) : res()));
+        // Insert the new user record
+        await queryAsync(connection, 'INSERT INTO users SET ?', newUser);
+        summary.created++;
 
-        try {
-          const userRes = await queryAsync(connection,
-            "INSERT INTO users (email, password, role) VALUES (?, ?, ?)",
-            [email, password, roleId] // Plain password as requested
-          );
-          const userId = userRes.insertId;
-
-            const photoPath = null; // bulk file photo not handled here
-          const facultyRes = await queryAsync(connection,
-            "INSERT INTO faculty (faculty_id, name, photo, user_id) VALUES (?, ?, ?, ?)",
-            [faculty_id, faculty_name, photoPath, userId]
-          );
-          const facultyPk = facultyRes.insertId;
-
-          const deptId = await upsertSingle("department", "department", dept);
-          const degreeId = await upsertSingle("degree", "degree", degree);
-          const semesterId = await upsertSemester(semester, semester_month);
-          const courseId = await upsertCourse(course_code, subject_name);
-
-          await queryAsync(connection,
-            `INSERT IGNORE INTO faculty_course (faculty, course, dept, degree, semester, status)
-             VALUES (?, ?, ?, ?, ?, 'active')`,
-            [facultyPk, courseId, deptId, degreeId, semesterId]
-          );
-
-          await new Promise((res, rej) => connection.commit(err => err ? rej(err) : res()));
-          summary.created++;
-          summary.rows.push({ row: rowNum, status: "created", faculty_id });
-        } catch (inner) {
-          await new Promise((res) => connection.rollback(() => res()));
-          summary.errors++;
-          summary.rows.push({ row: rowNum, status: "error", reason: inner.message });
-        }
-      } catch (logicErr) {
+      } catch (dbError) {
         summary.errors++;
-        summary.rows.push({ row: rowNum, status: "error", reason: logicErr.message });
+        summary.error_details.push({ row: rowNum, status: "error", reason: dbError.message });
       }
-
-      summary.processed++;
     }
 
     res.json(summary);
@@ -1376,7 +1248,178 @@ router.post("/upload-faculty", verifyToken, bulkUpload.single("file"), async (re
     console.error("Bulk upload failed:", err);
     res.status(500).json({ message: "Bulk upload failed", error: err.message });
   } finally {
+    // Clean up the uploaded file
     try { fs.unlinkSync(filePath); } catch {}
+  }
+});
+
+// GET mapping options: departments, courses, degrees, semesters, faculty, roles
+router.get("/map-options", verifyToken, async (req, res) => {
+  try {
+    const departments = await queryAsync(db, "SELECT id, department FROM department ORDER BY department", []);
+    const courses = await queryAsync(db, "SELECT id, course_code, subject FROM course ORDER BY course_code", []);
+    const degrees = await queryAsync(db, "SELECT id, degree FROM degree ORDER BY degree", []);
+    const semesters = await queryAsync(db, "SELECT id, semester, month FROM semester ORDER BY id", []);
+    const roles = await queryAsync(db, "SELECT id, role FROM role ORDER BY id", []);
+    // return all users (id, faculty_id, name, role) so frontend can choose who to change role/map
+    const faculty = await queryAsync(db, "SELECT id, faculty_id, name, role FROM users ORDER BY name", []);
+
+    res.status(200).json({
+      departments,
+      courses,
+      degrees,
+      semesters,
+      roles,
+      faculty
+    });
+  } catch (err) {
+    console.error("Error fetching map options:", err);
+    res.status(500).json({ message: "Failed to load mapping options", error: err.message });
+  }
+});
+
+// NEW: GET users who have existing mappings
+router.get("/users-with-mappings", verifyToken, async (req, res) => {
+  try {
+    const query = `
+      SELECT DISTINCT u.id, u.faculty_id, u.name, u.role
+      FROM users u
+      JOIN faculty_course fc ON u.id = fc.faculty
+      ORDER BY u.name ASC
+    `;
+    const users = await queryAsync(db, query);
+    res.status(200).json(users);
+  } catch (err) {
+    console.error("Error fetching users with mappings:", err);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
+});
+
+// NEW: GET all mappings for a specific user
+router.get("/faculty-mappings/:userId", verifyToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const query = `
+      SELECT 
+        fc.id, fc.course, fc.dept, fc.degree, fc.semester,
+        c.course_code, c.subject,
+        d.department
+      FROM faculty_course fc
+      JOIN course c ON fc.course = c.id
+      JOIN department d ON fc.dept = d.id
+      WHERE fc.faculty = ?
+    `;
+    const mappings = await queryAsync(db, query, [userId]);
+    res.status(200).json(mappings);
+  } catch (err) {
+    console.error("Error fetching faculty mappings:", err);
+    res.status(500).json({ message: "Failed to fetch mappings" });
+  }
+});
+
+// NEW: PUT to update an existing mapping and user role
+router.put("/map-faculty/:mappingId", verifyToken, async (req, res) => {
+  try {
+    const { mappingId } = req.params;
+    const { user_id, role_id, course_id, dept_id, degree_id, semester_id } = req.body;
+
+    if (!user_id || !role_id) {
+      return res.status(400).json({ message: "User ID and Role ID are required." });
+    }
+
+    // Start transaction
+    await new Promise((resolve, reject) => db.beginTransaction(err => err ? reject(err) : resolve()));
+
+    // 1. Update user's role
+    await queryAsync(db, "UPDATE users SET role = ? WHERE id = ?", [role_id, user_id]);
+
+    // 2. Check if the role is admin
+    const adminRoleRows = await queryAsync(db, "SELECT id FROM role WHERE role = 'admin' LIMIT 1");
+    const isAdmin = adminRoleRows.length > 0 && Number(role_id) === Number(adminRoleRows[0].id);
+
+    // 3. If admin, delete all mappings for that user. Otherwise, update the specific mapping.
+    if (isAdmin) {
+      // When role is set to admin, delete all course mappings for this user.
+      await queryAsync(db, "DELETE FROM faculty_course WHERE faculty = ?", [user_id]);
+    } else {
+      // If not admin, update the specific course mapping.
+      if (!course_id || !dept_id || !degree_id || !semester_id) {
+        await new Promise(resolve => db.rollback(resolve));
+        return res.status(400).json({ message: "Course, department, degree, and semester are required for non-admin roles." });
+      }
+      await queryAsync(db,
+        `UPDATE faculty_course SET course = ?, dept = ?, degree = ?, semester = ? WHERE id = ?`,
+        [course_id, dept_id, degree_id, semester_id, mappingId]
+      );
+    }
+
+    // Commit transaction
+    await new Promise((resolve, reject) => db.commit(err => err ? reject(err) : resolve()));
+
+    res.status(200).json({ message: "Mapping updated successfully." });
+
+  } catch (err) {
+    await new Promise(resolve => db.rollback(resolve));
+    console.error("Error updating faculty mapping:", err);
+    res.status(500).json({ message: "Failed to update mapping" });
+  }
+});
+
+
+// POST mapping: set user role and (only if role is NOT admin) create faculty_course link
+router.post("/map-faculty", verifyToken, async (req, res) => {
+  try {
+    const { faculty_id, course_id, dept_id, degree_id, semester_id, role_id } = req.body;
+
+    if (!faculty_id || !role_id) {
+      return res.status(400).json({ message: "Missing required fields: faculty_id and role_id are required." });
+    }
+
+    // Resolve user PK (support either numeric id or faculty_id code)
+    let userRow;
+    if (Number.isInteger(Number(faculty_id))) {
+      const rows = await queryAsync(db, "SELECT id, role FROM users WHERE id = ? LIMIT 1", [faculty_id]);
+      userRow = rows[0];
+    } else {
+      const rows = await queryAsync(db, "SELECT id, role FROM users WHERE faculty_id = ? LIMIT 1", [faculty_id]);
+      userRow = rows[0];
+    }
+
+    if (!userRow) {
+      return res.status(404).json({ message: "User not found in users table." });
+    }
+    const userPk = userRow.id;
+
+    // Update user's role
+    await queryAsync(db, "UPDATE users SET role = ? WHERE id = ?", [role_id, userPk]);
+
+    // Determine admin role id so we skip creating faculty_course when role is admin
+    const adminRoleRows = await queryAsync(db, "SELECT id FROM role WHERE role = 'admin' LIMIT 1", []);
+    const adminRoleId = adminRoleRows.length ? adminRoleRows[0].id : null;
+
+    // If selected role is admin, delete all course mappings for this user.
+    if (Number(role_id) === Number(adminRoleId)) {
+      // When role is set to admin, delete all course mappings for this user.
+      await queryAsync(db, "DELETE FROM faculty_course WHERE faculty = ?", [userPk]);
+      return res.status(200).json({ message: "User role updated to admin. Course mappings cleared." });
+    }
+
+    // For non-admin roles, require mapping fields
+    if (!course_id || !dept_id || !degree_id || !semester_id) {
+      return res.status(400).json({ message: "For non-admin roles you must provide course_id, dept_id, degree_id and semester_id." });
+    }
+
+    // Insert mapping. users.id is the faculty foreign key in faculty_course
+    await queryAsync(db,
+      `INSERT IGNORE INTO faculty_course (faculty, course, dept, degree, semester, status)
+       VALUES (?, ?, ?, ?, ?, 'active')`,
+      [userPk, course_id, dept_id, degree_id, semester_id]
+    );
+
+    return res.status(201).json({ message: "Role updated and mapping saved successfully." });
+  } catch (err) {
+    console.error("Error saving faculty mapping:", err);
+    res.status(500).json({ message: "Failed to save mapping", error: err.message });
   }
 });
 

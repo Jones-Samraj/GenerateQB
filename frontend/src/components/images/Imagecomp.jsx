@@ -34,6 +34,9 @@ export const Imagecomp = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
 
+  // Construct the full image URL
+  const profileImageUrl = user?.photo ? `http://localhost:7000${user.photo}` : Profile;
+
   const handleLogout = () => {
     dispatch(removeUser());  
     navigate('/');
@@ -69,9 +72,6 @@ export const Imagecomp = () => {
         <div className="relative bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-8 text-white overflow-hidden">
           {/* Background Pattern */}
           <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-0 right-0 w-40 h-40 bg-white rounded-full -translate-y-20 translate-x-20"></div>
-            <div className="absolute bottom-0 left-0 w-32 h-32 bg-white rounded-full translate-y-16 -translate-x-16"></div>
-            <div className="absolute top-1/2 left-1/2 w-24 h-24 bg-white rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-pulse"></div>
           </div>
           
           {/* Close Button */}
@@ -87,7 +87,7 @@ export const Imagecomp = () => {
             <div className="relative mb-6">
               <div className="w-28 h-28 rounded-full border-4 border-white/30 shadow-2xl overflow-hidden bg-white">
                 <img
-                  src={user?.photo || Profile}
+                  src={profileImageUrl}
                   alt="Profile"
                   className="w-full h-full object-cover"
                 />
@@ -370,7 +370,7 @@ export const Imagecomp = () => {
     <div className="relative">
       <div className="group">
         <img
-          src={user?.photo || Profile}
+          src={profileImageUrl}
           alt="Profile"
           className="w-14 h-14 rounded-full cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-110"
           onClick={() => setOpenProfileModal(true)}
