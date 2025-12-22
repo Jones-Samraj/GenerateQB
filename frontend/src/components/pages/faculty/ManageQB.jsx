@@ -104,29 +104,27 @@ const ManageQB = () => {
 
   // Fetch course code
   useEffect(() => {
-    if (email && token) {
-      setLoading(true);
+    if (user?.course_id) {
       axios
-        .get("http://localhost:7000/api/faculty/get-course-code", {
-          params: { email },
+        .get(`http://localhost:7000/api/faculty/get-course-code`, {
+          params: { course_id: user.course_id },
           headers: { Authorization: `Bearer ${token}` },
         })
         .then((res) => setCourseCode(res.data.course_code))
         .catch((err) => {
           console.error("Error fetching course code:", err);
           toast.error("Failed to fetch course code");
-        })
-        .finally(() => setLoading(false));
+        });
     }
-  }, [email, token]);
+  }, [user?.course_id, token]);
 
   // Fetch questions
   useEffect(() => {
-    if (courseCode) {
+    if (user?.course_id) {
       setLoading(true);
       axios
         .get(
-          `http://localhost:7000/api/faculty/faculty-question-list?course_code=${courseCode}`,
+          `http://localhost:7000/api/faculty/faculty-question-list?course_id=${user.course_id}`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -161,7 +159,7 @@ const ManageQB = () => {
         })
         .finally(() => setLoading(false));
     }
-  }, [courseCode, token]);
+  }, [user?.course_id, token]);
 
   // Filter questions based on search and status filter
   const filteredRows = questionRows.filter(row => {
@@ -179,9 +177,9 @@ const ManageQB = () => {
   const StatusBadge = ({ status, priority }) => {
     const getStatusColor = () => {
       switch (status) {
-        case 'pending': return 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white';
-        case 'rejected': return 'bg-gradient-to-r from-red-500 to-pink-500 text-white';
-        default: return 'bg-gradient-to-r from-gray-500 to-gray-600 text-white';
+        case 'pending': return 'bg-[#4b37cd]/70 text-white';
+        case 'rejected': return 'bg-[#4b37cd]/40 text-[#4b37cd]';
+        default: return 'bg-gray-600 text-white';
       }
     };
 
@@ -195,7 +193,7 @@ const ManageQB = () => {
     };
 
     return (
-      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg ${getStatusColor()}`}>
+      <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shadow-sm ${getStatusColor()}`}>
         {getPriorityIcon()}
         <span className="capitalize">{status}</span>
       </div>
@@ -304,8 +302,8 @@ const ManageQB = () => {
       flex: 0.8,
       renderCell: (params) => (
         <div className="flex items-center gap-2">
-          <div className="bg-blue-100 p-1.5 rounded-lg">
-            <BookOpen size={14} className="text-blue-600" />
+          <div className="bg-[#4b37cd]/10 p-1.5 rounded-lg">
+            <BookOpen size={14} className="text-[#4b37cd]" />
           </div>
           <span className="font-medium text-gray-800">{params.value}</span>
         </div>
@@ -317,10 +315,10 @@ const ManageQB = () => {
       flex: 0.9,
       renderCell: (params) => (
         <div className="flex items-center gap-2">
-          <div className="bg-purple-100 p-1.5 rounded-lg">
-            <Target size={14} className="text-purple-600" />
+          <div className="bg-[#4b37cd]/10 p-1.5 rounded-lg">
+            <Target size={14} className="text-[#4b37cd]" />
           </div>
-          <span className="font-semibold text-purple-800 py-1 rounded">
+          <span className="font-semibold text-[#4b37cd] py-1 rounded">
             {params.value}
           </span>
         </div>
@@ -331,7 +329,7 @@ const ManageQB = () => {
       headerName: 'Unit',
       flex: 0.5,
       renderCell: (params) => (
-        <span className="font-bold text-indigo-800 px-0 py-1 rounded">
+        <span className="font-bold text-[#4b37cd] px-0 py-1 rounded">
           {params.value}
         </span>
       ),
@@ -341,7 +339,7 @@ const ManageQB = () => {
       headerName: 'Mark',
       flex: 0.5,
       renderCell: (params) => (
-        <span className="font-bold text-emerald-800 px-0 py-1 rounded">
+        <span className="font-bold text-[#4b37cd] px-0 py-1 rounded">
           {params.value}M
         </span>
       ),
@@ -352,8 +350,8 @@ const ManageQB = () => {
       flex: 1.4,
       renderCell: (params) => (
         <div className="flex items-center gap-2">
-          <div className="bg-orange-100 p-1.5 rounded-lg">
-            <FileText size={14} className="text-orange-600" />
+          <div className="bg-[#4b37cd]/10 p-1.5 rounded-lg">
+            <FileText size={14} className="text-[#4b37cd]" />
           </div>
           <span className="text-gray-700 font-medium truncate" title={params.value}>
             {params.value}
@@ -400,14 +398,14 @@ const ManageQB = () => {
         <div className="flex gap-2 items-center">
           <button
             onClick={() => handleView(params.row.questionId)}
-            className="group relative p-2 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-all duration-200 hover:scale-110"
+            className="group relative p-2 bg-[#4b37cd]/10 hover:bg-[#4b37cd]/20 text-[#4b37cd] rounded-lg transition-all duration-200 hover:scale-110"
             title="View Question"
           >
             <Eye size={16} />
           </button>
           <button
             onClick={() => handleEdit(params.row.questionId)}
-            className="group relative p-2 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition-all duration-200 hover:scale-110"
+            className="group relative p-2 bg-[#4b37cd]/10 hover:bg-[#4b37cd]/20 text-[#4b37cd] rounded-lg transition-all duration-200 hover:scale-110"
             title="Edit Question"
           >
             <Pencil size={16} />
@@ -425,9 +423,9 @@ const ManageQB = () => {
   ];
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/40">
+    <div className="flex min-h-screen bg-gray-50">
       {/* Sidebar */}
-      <div className="hidden lg:flex flex-col fixed top-0 left-0 w-64 h-screen bg-white/80 backdrop-blur-xl shadow-2xl z-50 border-r border-gray-200/50">
+      <div className="hidden lg:flex flex-col fixed top-0 left-0 w-64 h-screen bg-white shadow-xl z-50 border-r border-gray-200">
         <FacultyNavbar />
       </div>
 
@@ -440,8 +438,6 @@ const ManageQB = () => {
             width: 250,
             top: 0,
             height: '100vh',
-            background: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(20px)',
           },
         }}
       >
@@ -454,29 +450,29 @@ const ManageQB = () => {
         <Fade in timeout={800}>
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 mb-8 overflow-hidden">
             
-            <div className="relative bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 px-8 py-10">
+            <div className="relative bg-[#4b37cd] px-8 py-10">
               <div className="flex flex-wrap justify-between items-center">
                 <div className="flex items-center gap-6">
                   <button
-                    className="block lg:hidden text-white hover:bg-white/20 p-3 rounded-xl transition-all duration-300 hover:scale-110"
+                    className="block lg:hidden text-white hover:bg-white/20 p-3 rounded-xl transition-all duration-300"
                     onClick={() => setOpenSidebar(!openSidebar)}
                   >
                     <Menu size={24} />
                   </button>
                   <div className="flex items-center gap-4">
-                    <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm border border-white/30">
+                    <div className="bg-white/20 p-4 rounded-2xl border border-white/30">
                       <Settings size={32} className="text-white" />
                     </div>
                     <div>
                       <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
                         Manage Questions
                       </h1>
-                      <p className="text-blue-100 text-lg">
+                      <p className="text-white/80 text-lg">
                         Edit and manage your pending & rejected questions
                       </p>
                       <div className="flex items-center gap-2 mt-2">
-                        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                        <span className="text-blue-200 text-sm">
+                        <div className="w-2 h-2 bg-white/60 rounded-full animate-pulse" />
+                        <span className="text-white/70 text-sm">
                           {questionRows.length} Questions to Review
                         </span>
                       </div>
@@ -492,17 +488,17 @@ const ManageQB = () => {
             </div>
 
             {/* Stats Summary */}
-            <div className="relative px-8 py-6 bg-gradient-to-b from-gray-50/80 to-white/80 backdrop-blur-sm">
+            <div className="relative px-8 py-6 bg-gray-50/50">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <Grow in timeout={600}>
                   <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3">
-                      <div className="bg-gradient-to-br from-yellow-500 to-orange-600 p-3 rounded-xl">
-                        <Clock size={20} className="text-white" />
+                      <div className="bg-[#4b37cd]/10 p-3 rounded-xl">
+                        <Clock size={20} className="text-[#4b37cd]" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-gray-600">Total Questions</p>
-                        <p className="text-2xl font-bold text-gray-900">{questionRows.length}</p>
+                        <p className="text-2xl font-bold text-[#4b37cd]">{questionRows.length}</p>
                       </div>
                     </div>
                   </div>
@@ -510,12 +506,12 @@ const ManageQB = () => {
                 <Grow in timeout={800}>
                   <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3">
-                      <div className="bg-gradient-to-br from-yellow-500 to-amber-600 p-3 rounded-xl">
-                        <AlertCircle size={20} className="text-white" />
+                      <div className="bg-[#4b37cd]/10 p-3 rounded-xl">
+                        <AlertCircle size={20} className="text-[#4b37cd]" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-gray-600">Pending</p>
-                        <p className="text-2xl font-bold text-gray-900">
+                        <p className="text-2xl font-bold text-[#4b37cd]">
                           {questionRows.filter(q => q.status === 'pending').length}
                         </p>
                       </div>
@@ -525,12 +521,12 @@ const ManageQB = () => {
                 <Grow in timeout={1000}>
                   <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3">
-                      <div className="bg-gradient-to-br from-red-500 to-pink-600 p-3 rounded-xl">
-                        <X size={20} className="text-white" />
+                      <div className="bg-[#4b37cd]/10 p-3 rounded-xl">
+                        <X size={20} className="text-[#4b37cd]" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-gray-600">Rejected</p>
-                        <p className="text-2xl font-bold text-gray-900">
+                        <p className="text-2xl font-bold text-[#4b37cd]">
                           {questionRows.filter(q => q.status === 'rejected').length}
                         </p>
                       </div>
@@ -540,12 +536,12 @@ const ManageQB = () => {
                 <Grow in timeout={1200}>
                   <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
                     <div className="flex items-center gap-3">
-                      <div className="bg-gradient-to-br from-purple-500 to-indigo-600 p-3 rounded-xl">
-                        <Sparkles size={20} className="text-white" />
+                      <div className="bg-[#4b37cd]/10 p-3 rounded-xl">
+                        <Sparkles size={20} className="text-[#4b37cd]" />
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-gray-600">Recent</p>
-                        <p className="text-2xl font-bold text-gray-900">
+                        <p className="text-2xl font-bold text-[#4b37cd]">
                           {questionRows.filter(q => q.priority === 'recent').length}
                         </p>
                       </div>
@@ -559,7 +555,7 @@ const ManageQB = () => {
 
         {/* Enhanced Filters and Add Button Section */}
         <Fade in timeout={1000}>
-          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-200/50 mb-8 p-6">
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-200 mb-8 p-6">
             <div className="flex flex-wrap gap-4 items-center justify-between">
               <div className="flex flex-wrap gap-4 items-center">
                 <div className="flex items-center gap-2">
@@ -572,7 +568,7 @@ const ManageQB = () => {
                     placeholder="Search questions, topics, or remarks..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 bg-gray-50 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200"
+                    className="w-full px-4 py-2 pl-10 bg-gray-50 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4b37cd] focus:border-[#4b37cd] outline-none transition-all duration-200"
                   />
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                 </div>
@@ -580,7 +576,7 @@ const ManageQB = () => {
                   <select
                     value={filterStatus}
                     onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-full px-4 py-2 pl-10 bg-gray-50 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none appearance-none transition-all duration-200"
+                    className="w-full px-4 py-2 pl-10 bg-gray-50 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4b37cd] focus:border-[#4b37cd] outline-none appearance-none transition-all duration-200"
                   >
                     <option value="">All Status</option>
                     {availableStatuses.map(status => (
@@ -604,7 +600,7 @@ const ManageQB = () => {
               </div>
               <button
                 onClick={() => navigate("../addquestions")}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105"
+                className="flex items-center gap-2 px-6 py-3 bg-[#4b37cd] hover:bg-[#3d2ba7] text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
               >
                 <Plus size={20} />
                 <span>Add Questions</span>
@@ -615,11 +611,11 @@ const ManageQB = () => {
 
         {/* Enhanced Data Table */}
         <Fade in timeout={1200}>
-          <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl border border-gray-200/50 overflow-hidden">
-            <div className="bg-gradient-to-r from-indigo-500/10 via-blue-500/10 to-purple-500/10 px-8 py-6 border-b border-gray-200/50">
+          <div className="bg-white rounded-3xl shadow-lg border border-gray-200 overflow-hidden">
+            <div className="bg-[#4b37cd]/5 px-8 py-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-2xl shadow-lg">
+                  <div className="bg-[#4b37cd] p-3 rounded-2xl shadow-sm">
                     <FileText size={24} className="text-white" />
                   </div>
                   <div>
@@ -640,8 +636,7 @@ const ManageQB = () => {
                   borderRadius: 3,
                   border: '1px solid rgba(229, 231, 235, 0.5)',
                   boxShadow: 'none',
-                  background: 'rgba(255, 255, 255, 0.8)',
-                  backdropFilter: 'blur(10px)',
+                  background: 'rgba(255, 255, 255, 0.95)',
                 }}
               >
                 <DataGrid
@@ -731,15 +726,15 @@ const ManageQB = () => {
                   : 'w-full max-w-6xl h-[90vh] mt-[5vh]'
               }`}>
                 {/* Modal Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-6 border-b border-gray-200">
+                <div className="bg-[#4b37cd] px-8 py-6 border-b border-gray-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+                      <div className="bg-white/20 p-3 rounded-2xl">
                         <Eye size={24} className="text-white" />
                       </div>
                       <div>
                         <h2 className="text-2xl font-bold text-white">Question Details</h2>
-                        <p className="text-blue-100 mt-1">
+                        <p className="text-white/80 mt-1">
                           {selectedQuestion.unit} - {selectedQuestion.mark}M Question
                         </p>
                       </div>
@@ -792,8 +787,8 @@ const ManageQB = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="bg-blue-100 p-2 rounded-lg">
-                            <Target size={18} className="text-blue-600" />
+                          <div className="bg-[#4b37cd]/10 p-2 rounded-lg">
+                            <Target size={18} className="text-[#4b37cd]" />
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-600">Unit</p>
@@ -803,24 +798,24 @@ const ManageQB = () => {
                       </div>
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="bg-green-100 p-2 rounded-lg">
-                            <Award size={18} className="text-green-600" />
+                          <div className="bg-[#4b37cd]/10 p-2 rounded-lg">
+                            <Award size={18} className="text-[#4b37cd]" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-gray-600">Marks</p>
+                            <p className="text-sm font-semibold text-gray-600">Marks</p>
                             <p className="text-lg font-bold text-gray-900">{selectedQuestion.mark}M</p>
                           </div>
                         </div>
                       </div>
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="bg-purple-100 p-2 rounded-lg">
-                            <BookOpen size={18} className="text-purple-600" />
+                          <div className="bg-[#4b37cd]/10 p-2 rounded-lg">
+                            <BookOpen size={18} className="text-[#4b37cd]" />
                           </div>
                           <div className="flex-1">
                             <p className="text-sm font-medium text-gray-600 mb-2">Topic</p>
-                            <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2">
-                              <p className="text-sm font-bold text-purple-800 break-words" title={selectedQuestion.topic}>
+                            <div className="bg-[#4b37cd]/10 border border-[#4b37cd]/20 rounded-lg px-3 py-2">
+                              <p className="text-sm font-bold text-[#4b37cd] break-words" title={selectedQuestion.topic}>
                                 {selectedQuestion.topic}
                               </p>
                             </div>
@@ -829,8 +824,8 @@ const ManageQB = () => {
                       </div>
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <div className="bg-emerald-100 p-2 rounded-lg">
-                            <CheckCircle size={18} className="text-emerald-600" />
+                          <div className="bg-[#4b37cd]/10 p-2 rounded-lg">
+                            <CheckCircle size={18} className="text-[#4b37cd]" />
                           </div>
                           <div>
                             <p className="text-sm font-medium text-gray-600">Status</p>
@@ -844,7 +839,7 @@ const ManageQB = () => {
                     <div className="space-y-6">
                       <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
                         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                          <FileText size={20} className="text-blue-600" />
+                          <FileText size={20} className="text-[#4b37cd]" />
                           Question
                         </h3>
                         <div
@@ -872,10 +867,10 @@ const ManageQB = () => {
                       {selectedQuestion.remarks && (
                         <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
                           <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                            <AlertCircle size={20} className="text-yellow-600" />
+                            <AlertCircle size={20} className="text-[#4b37cd]" />
                             Remark
                           </h3>
-                          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-xl">
+                          <div className="bg-[#4b37cd]/10 border-l-4 border-[#4b37cd] p-4 rounded-r-xl">
                             <p className="text-gray-700 leading-relaxed">
                               {selectedQuestion.remarks}
                             </p>
@@ -927,15 +922,15 @@ const ManageQB = () => {
                   : 'w-full max-w-6xl h-[90vh] mt-[5vh]'
               }`}>
                 {/* Edit Modal Header */}
-                <div className="bg-gradient-to-r from-green-600 to-emerald-700 px-8 py-6 border-b border-gray-200">
+                <div className="bg-[#4b37cd] px-8 py-6 border-b border-gray-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="bg-white/20 p-3 rounded-2xl backdrop-blur-sm">
+                      <div className="bg-white/20 p-3 rounded-2xl">
                         <Pencil size={24} className="text-white" />
                       </div>
                       <div>
                         <h2 className="text-2xl font-bold text-white">Edit Question</h2>
-                        <p className="text-green-100 mt-1">
+                        <p className="text-white/80 mt-1">
                           Modify and update question details
                         </p>
                       </div>
@@ -1009,7 +1004,7 @@ const ManageQB = () => {
                               unit: e.target.value,
                             })
                           }
-                          className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all duration-200"
+                          className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4b37cd] focus:border-[#4b37cd] outline-none transition-all duration-200"
                         />
                       </div>
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
@@ -1025,7 +1020,7 @@ const ManageQB = () => {
                               topic: e.target.value,
                             })
                           }
-                          className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all duration-200"
+                          className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4b37cd] focus:border-[#4b37cd] outline-none transition-all duration-200"
                         />
                       </div>
                       <div className="bg-white rounded-2xl p-4 border border-gray-200 shadow-sm">
@@ -1041,7 +1036,7 @@ const ManageQB = () => {
                               mark: e.target.value,
                             })
                           }
-                          className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all duration-200"
+                          className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#4b37cd] focus:border-[#4b37cd] outline-none transition-all duration-200"
                         />
                       </div>
                     </div>
@@ -1049,7 +1044,7 @@ const ManageQB = () => {
                     {/* Question Editor */}
                     <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
                       <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <FileText size={20} className="text-blue-600" />
+                        <FileText size={20} className="text-[#4b37cd]" />
                         Question
                       </h3>
                       <div className="border-2 border-gray-200 rounded-xl overflow-hidden">

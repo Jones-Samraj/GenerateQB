@@ -1253,6 +1253,78 @@ router.post("/upload-faculty", verifyToken, bulkUpload.single("file"), async (re
   }
 });
 
+// NEW: POST endpoint to create a new course
+router.post("/courses", verifyToken, async (req, res) => {
+  try {
+    const { course_code, subject } = req.body;
+    if (!course_code || !subject) {
+      return res.status(400).json({ message: "Course code and subject are required." });
+    }
+    const result = await queryAsync(db, "INSERT INTO course (course_code, subject) VALUES (?, ?)", [course_code, subject]);
+    res.status(201).json({ message: "Course created successfully.", id: result.insertId });
+  } catch (err) {
+    console.error("Error creating course:", err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: "A course with this code or subject already exists." });
+    }
+    res.status(500).json({ message: "Failed to create course" });
+  }
+});
+
+// NEW: POST endpoint to create a new department
+router.post("/departments", verifyToken, async (req, res) => {
+  try {
+    const { department } = req.body;
+    if (!department) {
+      return res.status(400).json({ message: "Department name is required." });
+    }
+    const result = await queryAsync(db, "INSERT INTO department (department) VALUES (?)", [department]);
+    res.status(201).json({ message: "Department created successfully.", id: result.insertId });
+  } catch (err) {
+    console.error("Error creating department:", err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: "This department already exists." });
+    }
+    res.status(500).json({ message: "Failed to create department" });
+  }
+});
+
+// NEW: POST endpoint to create a new degree
+router.post("/degrees", verifyToken, async (req, res) => {
+  try {
+    const { degree } = req.body;
+    if (!degree) {
+      return res.status(400).json({ message: "Degree name is required." });
+    }
+    const result = await queryAsync(db, "INSERT INTO degree (degree) VALUES (?)", [degree]);
+    res.status(201).json({ message: "Degree created successfully.", id: result.insertId });
+  } catch (err) {
+    console.error("Error creating degree:", err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: "This degree already exists." });
+    }
+    res.status(500).json({ message: "Failed to create degree" });
+  }
+});
+
+// NEW: POST endpoint to create a new semester
+router.post("/semesters", verifyToken, async (req, res) => {
+  try {
+    const { semester, month } = req.body;
+    if (!semester || !month) {
+      return res.status(400).json({ message: "Semester and month are required." });
+    }
+    const result = await queryAsync(db, "INSERT INTO semester (semester, month) VALUES (?, ?)", [semester, month]);
+    res.status(201).json({ message: "Semester created successfully.", id: result.insertId });
+  } catch (err) {
+    console.error("Error creating semester:", err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: "This semester already exists." });
+    }
+    res.status(500).json({ message: "Failed to create semester" });
+  }
+});
+
 // GET mapping options: departments, courses, degrees, semesters, faculty, roles
 router.get("/map-options", verifyToken, async (req, res) => {
   try {

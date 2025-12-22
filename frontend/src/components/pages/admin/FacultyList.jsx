@@ -115,6 +115,12 @@ const FacultyList = () => {
   });
   const [isEditRoleAdmin, setIsEditRoleAdmin] = useState(false);
 
+  // NEW: State for creating new options in Edit Modal
+  const [newCourse, setNewCourse] = useState({ course_code: '', subject: '' });
+  const [newDepartment, setNewDepartment] = useState('');
+  const [newDegree, setNewDegree] = useState('');
+  const [newSemester, setNewSemester] = useState({ semester: '', month: '' });
+
 
   // ADD: faculty form state (already present but keep consistent)
   const [facultyForm, setFacultyForm] = useState({
@@ -585,6 +591,63 @@ const FacultyList = () => {
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update mapping.");
       console.error(err);
+    }
+  };
+
+  // NEW: Handlers for creating new options from Edit Modal
+  const handleCreateOption = async (type) => {
+    let url, payload, successMessage, stateSetter, formField;
+    
+    try {
+      switch (type) {
+        case 'course':
+          if (!newCourse.course_code || !newCourse.subject) throw new Error("Course Code and Subject are required.");
+          url = "http://localhost:7000/api/admin/courses";
+          payload = newCourse;
+          successMessage = "Course created";
+          stateSetter = () => setNewCourse({ course_code: '', subject: '' });
+          formField = 'course_id';
+          break;
+        case 'department':
+          if (!newDepartment) throw new Error("Department Name is required.");
+          url = "http://localhost:7000/api/admin/departments";
+          payload = { department: newDepartment };
+          successMessage = "Department created";
+          stateSetter = () => setNewDepartment('');
+          formField = 'dept_id';
+          break;
+        case 'degree':
+          if (!newDegree) throw new Error("Degree Name is required.");
+          url = "http://localhost:7000/api/admin/degrees";
+          payload = { degree: newDegree };
+          successMessage = "Degree created";
+          stateSetter = () => setNewDegree('');
+          formField = 'degree_id';
+          break;
+        case 'semester':
+          if (!newSemester.semester || !newSemester.month) throw new Error("Semester and Month are required.");
+          url = "http://localhost:7000/api/admin/semesters";
+          payload = newSemester;
+          successMessage = "Semester created";
+          stateSetter = () => setNewSemester({ semester: '', month: '' });
+          formField = 'semester_id';
+          break;
+        default:
+          return;
+      }
+
+      const { data } = await axios.post(url, payload, { headers: { Authorization: `Bearer ${token}` } });
+      toast.success(successMessage);
+      
+      // Refresh options and auto-select the new one
+      const optionsRes = await axios.get("http://localhost:7000/api/admin/map-options", { headers: { Authorization: `Bearer ${token}` } });
+      setMapOptions(optionsRes.data);
+      setMapForm(prev => ({ ...prev, [formField]: data.id }));
+      stateSetter();
+
+    } catch (err) {
+      toast.error(err?.response?.data?.message || err.message || `Failed to create ${type}.`);
+      console.error(`Create ${type} failed:`, err);
     }
   };
 
@@ -1126,13 +1189,13 @@ jane.smith@example.com,Pass@123,FA102,Jane Smith`;
         {/* Map Faculty Modal - NEW */}
         {mapOpen && mapOptions && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">Map Faculty to Course</h3>
                 <button onClick={() => setMapOpen(false)} className="text-gray-500">&times;</button>
               </div>
 
-              <form onSubmit={submitMapping} className="space-y-3">
+              <form onSubmit={submitMapping} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Faculty</label>
                   <select required name="faculty_id" value={mapForm.faculty_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded">
@@ -1155,46 +1218,66 @@ jane.smith@example.com,Pass@123,FA102,Jane Smith`;
 
                 { !isRoleAdmin && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Course</label>
-                      <select required name="course_id" value={mapForm.course_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded">
-                        <option value="">Select course</option>
-                        {mapOptions.courses.map(c => (
-                          <option key={c.id} value={c.id}>{c.course_code} — {c.subject}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Department</label>
-                        <select required name="dept_id" value={mapForm.dept_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded">
-                          <option value="">Select department</option>
-                          {mapOptions.departments.map(d => (
-                            <option key={d.id} value={d.id}>{d.department}</option>
-                          ))}
+                    {/* Course with Create */}
+                    <div className="p-2 border rounded-lg bg-gray-50">
+                      <label className="block text-sm font-medium mb-1 text-gray-600">Course</label>
+                      <div className="flex items-center gap-2">
+                        <select required name="course_id" value={mapForm.course_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded-md">
+                          <option value="">-- Select or Create --</option>
+                          {mapOptions.courses.map(c => <option key={c.id} value={c.id}>{c.course_code} - {c.subject}</option>)}
                         </select>
                       </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Degree</label>
-                        <select required name="degree_id" value={mapForm.degree_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded">
-                          <option value="">Select degree</option>
-                          {mapOptions.degrees.map(d => (
-                            <option key={d.id} value={d.id}>{d.degree}</option>
-                          ))}
-                        </select>
+                      <div className="flex items-center gap-2 mt-2">
+                        <input type="text" placeholder="New Course Code" value={newCourse.course_code} onChange={e => setNewCourse(p => ({...p, course_code: e.target.value}))} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <input type="text" placeholder="New Subject Name" value={newCourse.subject} onChange={e => setNewCourse(p => ({...p, subject: e.target.value}))} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <button type="button" onClick={() => handleCreateOption('course')} className="bg-purple-500 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-purple-600">Add</button>
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Semester</label>
-                      <select required name="semester_id" value={mapForm.semester_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded">
-                        <option value="">Select semester</option>
-                        {mapOptions.semesters.map(s => (
-                          <option key={s.id} value={s.id}>{s.semester} — {s.month}</option>
-                        ))}
-                      </select>
+                    {/* Department with Create */}
+                    <div className="p-2 border rounded-lg bg-gray-50">
+                      <label className="block text-sm font-medium mb-1 text-gray-600">Department</label>
+                      <div className="flex items-center gap-2">
+                        <select required name="dept_id" value={mapForm.dept_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded-md">
+                          <option value="">-- Select or Create --</option>
+                          {mapOptions.departments.map(d => <option key={d.id} value={d.id}>{d.department}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <input type="text" placeholder="New Department Name" value={newDepartment} onChange={e => setNewDepartment(e.target.value)} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <button type="button" onClick={() => handleCreateOption('department')} className="bg-purple-500 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-purple-600">Add</button>
+                      </div>
+                    </div>
+
+                    {/* Degree with Create */}
+                    <div className="p-2 border rounded-lg bg-gray-50">
+                      <label className="block text-sm font-medium mb-1 text-gray-600">Degree</label>
+                      <div className="flex items-center gap-2">
+                        <select required name="degree_id" value={mapForm.degree_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded-md">
+                          <option value="">-- Select or Create --</option>
+                          {mapOptions.degrees.map(d => <option key={d.id} value={d.id}>{d.degree}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <input type="text" placeholder="New Degree Name" value={newDegree} onChange={e => setNewDegree(e.target.value)} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <button type="button" onClick={() => handleCreateOption('degree')} className="bg-purple-500 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-purple-600">Add</button>
+                      </div>
+                    </div>
+
+                    {/* Semester with Create */}
+                    <div className="p-2 border rounded-lg bg-gray-50">
+                      <label className="block text-sm font-medium mb-1 text-gray-600">Semester</label>
+                      <div className="flex items-center gap-2">
+                        <select required name="semester_id" value={mapForm.semester_id} onChange={handleMapInput} className="w-full px-3 py-2 border rounded-md">
+                          <option value="">-- Select or Create --</option>
+                          {mapOptions.semesters.map(s => <option key={s.id} value={s.id}>{s.semester} - {s.month}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <input type="text" placeholder="New Semester (e.g., 1)" value={newSemester.semester} onChange={e => setNewSemester(p => ({...p, semester: e.target.value}))} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <input type="text" placeholder="New Month (e.g., Jan)" value={newSemester.month} onChange={e => setNewSemester(p => ({...p, month: e.target.value}))} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <button type="button" onClick={() => handleCreateOption('semester')} className="bg-purple-500 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-purple-600">Add</button>
+                      </div>
                     </div>
                   </>
                 )}
@@ -1211,13 +1294,13 @@ jane.smith@example.com,Pass@123,FA102,Jane Smith`;
         {/* NEW: Edit Mapping Modal */}
         {editMapOpen && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+            <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold">Edit User Role & Mapping</h3>
                 <button onClick={() => setEditMapOpen(false)} className="text-gray-500">&times;</button>
               </div>
 
-              <form onSubmit={handleEditMapSubmit} className="space-y-3">
+              <form onSubmit={handleEditMapSubmit} className="space-y-4">
                 {/* Step 1: Select User */}
                 <div>
                   <label className="block text-sm font-medium mb-1">User to Edit</label>
@@ -1257,31 +1340,48 @@ jane.smith@example.com,Pass@123,FA102,Jane Smith`;
 
                         {!isEditRoleAdmin && (
                           <>
-                            <div>
-                              <label className="block text-sm font-medium mb-1">Course</label>
-                              <select required name="course_id" value={editMapForm.course_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded">
-                                {mapOptions.courses.map(c => <option key={c.id} value={c.id}>{c.course_code} - {c.subject}</option>)}
-                              </select>
+                            {/* Course with Create */}
+                            <div className="p-2 border rounded-lg bg-gray-50">
+                              <label className="block text-sm font-medium mb-1 text-gray-600">Course</label>
+                              <div className="flex items-center gap-2">
+                                <select required name="course_id" value={editMapForm.course_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded-md">
+                                  <option value="">-- Select or Create --</option>
+                                  {mapOptions.courses.map(c => <option key={c.id} value={c.id}>{c.course_code} - {c.subject}</option>)}
+                                </select>
+                              </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="block text-sm font-medium mb-1">Department</label>
-                                <select required name="dept_id" value={editMapForm.dept_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded">
+
+                            {/* Department with Create */}
+                            <div className="p-2 border rounded-lg bg-gray-50">
+                              <label className="block text-sm font-medium mb-1 text-gray-600">Department</label>
+                              <div className="flex items-center gap-2">
+                                <select required name="dept_id" value={editMapForm.dept_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded-md">
+                                  <option value="">-- Select or Create --</option>
                                   {mapOptions.departments.map(d => <option key={d.id} value={d.id}>{d.department}</option>)}
                                 </select>
                               </div>
-                              <div>
-                                <label className="block text-sm font-medium mb-1">Degree</label>
-                                <select required name="degree_id" value={editMapForm.degree_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded">
+                            </div>
+
+                            {/* Degree with Create */}
+                            <div className="p-2 border rounded-lg bg-gray-50">
+                              <label className="block text-sm font-medium mb-1 text-gray-600">Degree</label>
+                              <div className="flex items-center gap-2">
+                                <select required name="degree_id" value={editMapForm.degree_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded-md">
+                                  <option value="">-- Select or Create --</option>
                                   {mapOptions.degrees.map(d => <option key={d.id} value={d.id}>{d.degree}</option>)}
                                 </select>
                               </div>
                             </div>
-                            <div>
-                              <label className="block text-sm font-medium mb-1">Semester</label>
-                              <select required name="semester_id" value={editMapForm.semester_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded">
-                                {mapOptions.semesters.map(s => <option key={s.id} value={s.id}>{s.semester} - {s.month}</option>)}
-                              </select>
+
+                            {/* Semester with Create */}
+                            <div className="p-2 border rounded-lg bg-gray-50">
+                              <label className="block text-sm font-medium mb-1 text-gray-600">Semester</label>
+                              <div className="flex items-center gap-2">
+                                <select required name="semester_id" value={editMapForm.semester_id} onChange={handleEditMapInputChange} className="w-full px-3 py-2 border rounded-md">
+                                  <option value="">-- Select or Create --</option>
+                                  {mapOptions.semesters.map(s => <option key={s.id} value={s.id}>{s.semester} - {s.month}</option>)}
+                                </select>
+                              </div>
                             </div>
                           </>
                         )}

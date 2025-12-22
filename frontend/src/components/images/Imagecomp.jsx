@@ -43,10 +43,10 @@ export const Imagecomp = () => {
   };
 
   useEffect(() => {
-    if (user?.email) {
+    if (user?.email && user?.course_id) {
       setLoading(true);
       axios
-        .get(`http://localhost:7000/api/faculty/faculty-data?email=${user.email}`, {
+        .get(`http://localhost:7000/api/faculty/faculty-data?email=${user.email}&course_id=${user.course_id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           }
@@ -346,39 +346,30 @@ export const Imagecomp = () => {
           </div>
         </div>
       </div>
-
-      {/* Custom Animation Styles */}
-      <style jsx>{`
-        .animate-slide-in {
-          animation: slideIn 0.3s ease-out;
-        }
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: translateY(20px) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-      `}</style>
     </div>
   );
 
   return (
-    <div className="relative">
-      <div className="group">
-        <img
-          src={profileImageUrl}
-          alt="Profile"
-          className="w-14 h-14 rounded-full cursor-pointer border-2 border-transparent hover:border-blue-400 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-110"
-          onClick={() => setOpenProfileModal(true)}
-        />
-        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+    <>
+      <div 
+        className="flex items-center gap-3 cursor-pointer group" 
+        onClick={() => setOpenProfileModal(true)}
+      >
+        <div className="relative">
+          <img
+            src={profileImageUrl}
+            alt="Profile"
+            className="w-12 h-12 rounded-full object-cover border-2 border-gray-200 group-hover:border-blue-500 transition-all duration-300 shadow-sm"
+          />
+          <span className="absolute bottom-0 right-0 block h-3 w-3 rounded-full bg-green-400 border-2 border-white ring-1 ring-green-400"></span>
+        </div>
+        <div className="hidden md:block">
+          <p className="font-semibold text-gray-800 text-sm leading-tight">{user?.name || 'Faculty'}</p>
+          <p className="text-xs text-gray-500 group-hover:text-blue-600 transition-colors">View Profile</p>
+        </div>
       </div>
 
       {openProfileModal && <ProfileModal />}
-    </div>
+    </>
   );
 };

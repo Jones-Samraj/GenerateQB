@@ -48,33 +48,24 @@ router.post(
 );
 
 router.get("/get-course-code", verifyToken, (req, res) => {
-  const { email } = req.query;
-  if (!email) return res.status(400).send("Missing email");
+  const { course_id } = req.query; // Changed from email to course_id
+  if (!course_id) return res.status(400).send("Missing course_id");
 
-  const query = `
-    SELECT c.course_code
-    FROM users u
-    INNER JOIN faculty_course fc ON u.id = fc.faculty
-    INNER JOIN course c ON fc.course = c.id
-    WHERE u.email = ?
-  `;
+  const query = `SELECT course_code FROM course WHERE id = ?`;
 
-  db.query(query, [email], (err, results) => {
+  db.query(query, [course_id], (err, results) => {
     if (err) return res.status(500).send("Error fetching course code");
-
-    if (results.length === 0)
-      return res.status(404).send("No course code found");
-
+    if (results.length === 0) return res.status(404).send("No course code found");
     res.json({ course_code: results[0].course_code });
   });
 });
 
 
 router.get("/faculty-question-status", verifyToken, (req, res) => {
-  const courseCode = req.query.course_code;
+  const courseId = req.query.course_id; // Changed from course_code to course_id
 
-  if (!courseCode) {
-    return res.status(400).json({ error: "Course code is required" });
+  if (!courseId) {
+    return res.status(400).json({ error: "Course ID is required" });
   }
 
   const weeklyQuery = `
@@ -86,7 +77,7 @@ router.get("/faculty-question-status", verifyToken, (req, res) => {
     JOIN qb.course c ON q.course_code = c.course_code
     JOIN qb.faculty_course fc ON fc.course = c.id
     JOIN qb.users u ON fc.faculty = u.id
-    WHERE q.course_code = ?
+    WHERE c.id = ?
       AND q.created_at >= NOW() - INTERVAL 7 WEEK
     GROUP BY u.faculty_id, YEARWEEK(q.created_at, 1)
     ORDER BY week ASC
@@ -101,16 +92,16 @@ router.get("/faculty-question-status", verifyToken, (req, res) => {
     JOIN qb.course c ON q.course_code = c.course_code
     JOIN qb.faculty_course fc ON fc.course = c.id
     JOIN qb.users u ON fc.faculty = u.id
-    WHERE q.course_code = ?
+    WHERE c.id = ?
       AND q.created_at >= NOW() - INTERVAL 6 MONTH
     GROUP BY u.faculty_id, DATE_FORMAT(q.created_at, '%Y-%m')
     ORDER BY month ASC
   `;
 
-  db.query(weeklyQuery, [courseCode], (err, weeklyResults) => {
+  db.query(weeklyQuery, [courseId], (err, weeklyResults) => {
     if (err) return res.status(400).json({ error: err.message });
 
-    db.query(monthlyQuery, [courseCode], (err, monthlyResults) => {
+    db.query(monthlyQuery, [courseId], (err, monthlyResults) => {
       if (err) return res.status(400).json({ error: err.message });
 
       res.status(200).json({ weekly: weeklyResults, monthly: monthlyResults });
@@ -120,7 +111,10 @@ router.get("/faculty-question-status", verifyToken, (req, res) => {
 
 
 router.get("/faculty-data", verifyToken, (req, res) => {
-  const { email } = req.query;
+  const { email, course_id } = req.query; // Added course_id
+  if (!email || !course_id) {
+    return res.status(400).send("Email and Course ID are required.");
+  }
   const query = `
     SELECT 
       u.faculty_id,
@@ -140,10 +134,10 @@ router.get("/faculty-data", verifyToken, (req, res) => {
     LEFT JOIN department d ON fc.dept = d.id
     LEFT JOIN degree dg ON fc.degree = dg.id
     LEFT JOIN semester s ON fc.semester = s.id
-    WHERE u.email = ?;
+    WHERE u.email = ? AND fc.course = ?;
   `;
 
-  db.query(query, [email], (err, results) => {
+  db.query(query, [email, course_id], (err, results) => {
     if (err) {
       return res.status(400).send(err);
     }
@@ -153,13 +147,13 @@ router.get("/faculty-data", verifyToken, (req, res) => {
 
 
 router.get("/faculty-question-list", verifyToken, (req, res) => {
-  const { course_code } = req.query;
-  if (!course_code)
-    return res.status(400).json({ error: "Course code is required" });
+  const { course_id } = req.query; // Changed from course_code to course_id
+  if (!course_id)
+    return res.status(400).json({ error: "Course ID is required" });
 
   const query =
-    "SELECT faculty_id,course_code,mark,remarks,question_id,question,unit,updated_at,status,topic  FROM question_status WHERE course_code = ?";
-  db.query(query, [course_code], (err, results) => {
+    "SELECT qs.faculty_id, c.course_code, qs.mark, qs.remarks, qs.question_id, qs.question, qs.unit, qs.updated_at, qs.status, qs.topic FROM question_status qs JOIN course c ON qs.course_code = c.course_code WHERE c.id = ?";
+  db.query(query, [course_id], (err, results) => {
     if (!err) res.status(200).json(results);
     else res.status(400).json({ error: err.message });
   });
@@ -693,24 +687,17 @@ router.post("/increment-question-count", verifyToken, (req, res) => {
 
   db.query(query, [faculty_id, unit], (err, result) => {
     if (err) {
-      console.error("Error incrementing count:", err);
-      return res.status(500).json({ error: "Failed to update count" });
+      console.error("Error incrementing question count:", err);
+      return res.status(500).json({ error: "Failed to update task progress" });
     }
-
     if (result.affectedRows === 0) {
-      return res.status(404).json({
-        error: "No matching task row found",
-        faculty_id,
-        unit,
-      });
+      // This might happen if no task matches the faculty_id and unit.
+      // It's not necessarily a server error, but the client should know.
+      return res
+        .status(404)
+        .json({ message: "No matching task found to update." });
     }
-
-    res.status(200).json({
-      message: "Count incremented",
-      faculty_id,
-      unit,
-      mark,
-    });
+    res.status(200).json({ message: "Task progress updated successfully." });
   });
 });
 

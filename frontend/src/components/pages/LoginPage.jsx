@@ -18,11 +18,14 @@ import {
   Award,
   Target,
   Globe,
-  TrendingUp
+  TrendingUp,
+  ChevronRight
 } from 'lucide-react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, provider } from "../../firebase";
 import axios from 'axios';
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -31,6 +34,12 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  
+  // State for course selection
+  const [showCourseSelection, setShowCourseSelection] = useState(false);
+  const [courseOptions, setCourseOptions] = useState([]);
+  const [selectedUser, setSelectedUser] = useState(null);
+
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -47,32 +56,57 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      const res = await axios.post('http://localhost:7000/api/auth/manual-login', {
-        email:email,
-        password:password,
+      const res = await axios.post('http://localhost:7000/api/auth/login', {
+        email: email,
+        password: password,
       });
 
-      if (res.data.success) {
+      if (res.data.requiresSelection) {
+        setSelectedUser(res.data.user);
+        setCourseOptions(res.data.courses);
+        setShowCourseSelection(true);
+      } else {
         localStorage.setItem('token', res.data.token);
-
-        dispatch(setUser({
-          email: res.data.user.email,
-          role: res.data.user.role,
-        }));
+        dispatch(setUser(res.data.user));
+        toast.success("Login successful!");
 
         if (res.data.user.role === "admin") {
           navigate('/admindashboard');
-        } else if (res.data.user.role === "faculty") {
-          navigate('/facultydashboard');
         } else {
-          navigate('/');
+          navigate('/facultydashboard');
         }
-      } else {
-        alert(res.data.message || 'Invalid credentials');
       }
     } catch (err) {
-      console.error('Error during manual login:', err);
-      alert('Login failed. Please check your credentials and try again.');
+      const errorMessage = err.response?.data || 'Login failed. Please check your credentials.';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCourseSelect = async (courseId) => {
+    if (!selectedUser || !courseId) {
+      toast.error("An error occurred. Please try logging in again.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await axios.post(
+        "http://localhost:7000/api/auth/select-course",
+        {
+          userId: selectedUser.id,
+          courseId: courseId,
+        }
+      );
+
+      localStorage.setItem("token", res.data.token);
+      dispatch(setUser(res.data.user));
+      toast.success("Login successful!");
+      navigate("/facultydashboard");
+    } catch (err) {
+      const errorMessage = err.response?.data || "Failed to select course. Please try again.";
+      toast.error(errorMessage);
+      setShowCourseSelection(false);
     } finally {
       setLoading(false);
     }
@@ -84,37 +118,33 @@ const LoginPage = () => {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
+      // Using the /login endpoint for Google users as well, assuming they have a password set
+      // This part might need adjustment based on how you handle passwordless Google logins
       const res = await axios.post('http://localhost:7000/api/auth/check-user', {
         email: user.email,
       });
 
-      // Change this condition from res.data.exists to res.data.success
       if (res.data.success) {
+        // This flow assumes Google users only have one course or are admins.
+        // A more complex flow would be needed if they can have multiple courses.
         localStorage.setItem('token', res.data.token);
+        dispatch(setUser(res.data.user));
+        toast.success("Login successful!");
 
-        // The user object is nested, so use res.data.user
-        dispatch(setUser({
-          email: res.data.user.email,
-          role: res.data.user.role
-        }));
-
-        // Check the role from the nested user object
         if (res.data.user.role === 'admin') {
           navigate('/admindashboard');
         } else if (res.data.user.role === 'faculty') {
           navigate('/facultydashboard');
         }
       } else {
-        // This part is now correctly reached only when the backend says the user is not found.
-        alert('You are not registered. Please contact the administrator.');
+        toast.error('You are not registered. Please contact the administrator.');
       }
     } catch (error) {
-      // This will catch network errors or if the user is truly not in the DB (404 from backend)
       console.error("Google sign-in error:", error);
       if (error.response && error.response.status === 404) {
-        alert('You are not registered. Please contact the administrator.');
+        toast.error('You are not registered. Please contact the administrator.');
       } else {
-        alert('Google login failed. Please try again.');
+        toast.error('Google login failed. Please try again.');
       }
     } finally {
       setGoogleLoading(false);
@@ -390,18 +420,74 @@ const LoginPage = () => {
         </div>
       </div>
 
+      {/* Course Selection Modal */}
+      {showCourseSelection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md transform transition-all animate-fade-in-up">
+            <h2 className="text-2xl font-bold text-center text-gray-800 mb-4">
+              Select a Course
+            </h2>
+            <p className="text-center text-gray-600 mb-8">
+              You are assigned to multiple courses. Please choose which one you
+              want to access.
+            </p>
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+              {courseOptions.map((course) => (
+                <button
+                  key={course.course_id}
+                  onClick={() => handleCourseSelect(course.course_id)}
+                  disabled={loading}
+                  className="w-full flex items-center justify-between text-left p-4 rounded-xl bg-gray-50 hover:bg-purple-100 border-2 border-transparent hover:border-purple-300 transition-all duration-200 group disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-purple-100 rounded-lg text-purple-600 group-hover:bg-white transition-colors">
+                      <BookOpen size={20} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-800">
+                        {course.course_code}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {course.subject} - {course.department}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight
+                    size={20}
+                    className="text-gray-400 group-hover:text-purple-600 transition-transform duration-200 group-hover:translate-x-1"
+                  />
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => {
+                setShowCourseSelection(false);
+                setSelectedUser(null);
+                setCourseOptions([]);
+              }}
+              className="w-full mt-8 py-3 text-center text-gray-600 font-semibold rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
+
       {/* Custom Styles */}
-      <style jsx>{`
-        .rounded-4xl {
-          border-radius: 2rem;
-        }
-        .shadow-3xl {
-          box-shadow: 0 35px 60px -12px rgba(0, 0, 0, 0.25);
-        }
-        .border-3 {
-          border-width: 3px;
-        }
-      `}</style>
+      
     </div>
   );
 };
