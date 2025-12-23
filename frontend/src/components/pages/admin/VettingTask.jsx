@@ -58,7 +58,22 @@ const VettingTask = () => {
             },
           }
         );
-        setFacultyList(res.data);
+        // Deduplicate faculty by faculty_id, combine subjects
+        const facultyMap = new Map();
+        res.data.forEach((item) => {
+          if (facultyMap.has(item.faculty_id)) {
+            const existing = facultyMap.get(item.faculty_id);
+            if (item.subject_name && !existing.subjects.includes(item.subject_name)) {
+              existing.subjects.push(item.subject_name);
+            }
+          } else {
+            facultyMap.set(item.faculty_id, {
+              ...item,
+              subjects: item.subject_name ? [item.subject_name] : [],
+            });
+          }
+        });
+        setFacultyList(Array.from(facultyMap.values()));
       } catch (err) {
         toast.error("Failed to load faculty list");
       }
@@ -323,7 +338,7 @@ const VettingTask = () => {
                     <datalist id="faculty-suggestions">
                       {facultyList.map((faculty, idx) => (
                         <option key={idx} value={faculty.faculty_id}>
-                          {faculty.faculty_id} — {faculty.faculty_name}
+                          {faculty.faculty_id} — {faculty.faculty_name} — {faculty.subjects?.join(", ") || ""}
                         </option>
                       ))}
                     </datalist>
@@ -349,7 +364,7 @@ const VettingTask = () => {
                     <datalist id="vetting-suggestions">
                       {facultyList.map((faculty, idx) => (
                         <option key={idx} value={faculty.faculty_id}>
-                          {faculty.faculty_id} — {faculty.faculty_name}
+                          {faculty.faculty_id} — {faculty.faculty_name} — {faculty.subjects?.join(", ") || ""}
                         </option>
                       ))}
                     </datalist>
@@ -447,7 +462,10 @@ const VettingTask = () => {
                                 <div>
                                   <p className="font-semibold text-gray-900">{item.faculty_id}</p>
                                   {item.faculty_name && (
+                                    <>
                                     <p className="text-sm text-gray-600">{item.faculty_name}</p>
+                                    <p className="text-sm text-gray-600">{item.faculty_subject}</p>
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -474,7 +492,10 @@ const VettingTask = () => {
                                 <div>
                                   <p className="font-semibold text-gray-900">{item.vetting_id}</p>
                                   {item.vetting_name && (
+                                    <>
                                     <p className="text-sm text-gray-600">{item.vetting_name}</p>
+                                    <p className="text-sm text-gray-600">{item.vetting_subject}</p>
+                                    </>
                                   )}
                                 </div>
                               </div>
@@ -583,9 +604,14 @@ const VettingTask = () => {
                                   {availableQuestionFaculty[idx].faculty_id}
                                 </p>
                                 {availableQuestionFaculty[idx].faculty_name && (
+                                  <>
                                   <p className="text-sm text-gray-600">
                                     {availableQuestionFaculty[idx].faculty_name}
                                   </p>
+                                  <p className="text-sm text-gray-600">
+                                    {availableQuestionFaculty[idx].subjects?.join(", ") || ""}
+                                  </p>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -604,9 +630,14 @@ const VettingTask = () => {
                                   {availableVettingFaculty[idx].faculty_id}
                                 </p>
                                 {availableVettingFaculty[idx].faculty_name && (
+                                  <>
                                   <p className="text-sm text-gray-600">
                                     {availableVettingFaculty[idx].faculty_name}
                                   </p>
+                                  <p className="text-sm text-gray-600">
+                                    {availableVettingFaculty[idx].subjects?.join(", ") || ""}
+                                  </p>
+                                  </>
                                 )}
                               </div>
                             </div>

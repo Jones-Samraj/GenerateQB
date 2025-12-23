@@ -1053,11 +1053,23 @@ router.post("/add-vetting", verifyToken, (req, res) => {
 router.get("/vetting-list", (req, res) => {
   const query = `
     SELECT 
-      v.faculty_id, u1.faculty_id AS faculty_code, u1.name AS faculty_name,
-      v.vetting_id, u2.faculty_id AS vetting_code, u2.name AS vetting_name
+      v.faculty_id,
+      u1.faculty_id AS faculty_code,
+      u1.name AS faculty_name,
+      GROUP_CONCAT(DISTINCT c1.subject SEPARATOR ', ') AS faculty_subject,
+
+      v.vetting_id,
+      u2.faculty_id AS vetting_code,
+      u2.name AS vetting_name,
+      GROUP_CONCAT(DISTINCT c2.subject SEPARATOR ', ') AS vetting_subject
     FROM vetting v
     JOIN users u1 ON v.faculty_id = u1.faculty_id
     JOIN users u2 ON v.vetting_id = u2.faculty_id
+    LEFT JOIN faculty_course fc1 ON fc1.faculty = u1.id
+    LEFT JOIN course c1 ON c1.id = fc1.course
+    LEFT JOIN faculty_course fc2 ON fc2.faculty = u2.id
+    LEFT JOIN course c2 ON c2.id = fc2.course
+    GROUP BY v.faculty_id, v.vetting_id, u1.faculty_id, u1.name, u2.faculty_id, u2.name
   `;
 
   db.query(query, (err, rows) => {

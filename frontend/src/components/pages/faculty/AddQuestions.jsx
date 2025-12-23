@@ -210,6 +210,18 @@ const AddQuestions = () => {
       return;
     }
 
+    // Validate course code for uploads
+    if (isUpload && !courseCode) {
+      toast.error("Course code is missing. Cannot upload file.");
+      return;
+    }
+
+    // Validate faculty ID for uploads
+    if (isUpload && !facultyId) {
+      toast.error("Faculty ID is missing. Cannot upload file.");
+      return;
+    }
+
     if (!formData.faculty_id && facultyId) {
       setFormData((prev) => ({
         ...prev,
@@ -268,8 +280,9 @@ const AddQuestions = () => {
         console.log("File being uploaded:", file.name);
         console.log("Course code:", courseCode);
         console.log("Faculty ID:", facultyId);
+        console.log("Vetting ID:", vettingId);
 
-        await axios.post(
+        const response = await axios.post(
           "http://localhost:7000/api/faculty/upload",
           uploadFormData,
           {
@@ -279,6 +292,8 @@ const AddQuestions = () => {
             },
           }
         );
+
+        console.log("Upload response:", response.data);
 
         // console.log(uploadFormData) - This doesn't work for FormData objects
 
@@ -375,10 +390,10 @@ const AddQuestions = () => {
       setFigureFile(null);
       setFigurePath("");
     } catch (error) {
-      toast.error(
-        "Error adding question: " +
-          (error.response?.data?.message || error.message)
-      );
+      const errorMessage = error.response?.data?.message || error.response?.data || error.message;
+      console.error("Full error response:", error.response);
+      console.error("Error data:", error.response?.data);
+      toast.error("Error: " + errorMessage);
       console.error(error);
     }
   };
@@ -575,6 +590,30 @@ const AddQuestions = () => {
                           Selected: {file.name}
                         </p>
                       )}
+                      
+                      {/* Sample File Format Section */}
+                      <div className="mt-4 p-4 bg-[#4b37cd]/5 border border-[#4b37cd]/20 rounded-lg">
+                        <p className="text-sm font-semibold text-[#4b37cd] mb-2">📄 File Format Requirements:</p>
+                        <ul className="text-xs text-gray-600 space-y-1 mb-3">
+                          <li>• Accepted formats: <span className="font-medium">.xlsx, .csv, .xls</span></li>
+                          <li>• Required columns: <span className="font-medium">unit, topic, mark, question, answer</span></li>
+                          <li>• Optional columns: <span className="font-medium">option_a, option_b, option_c, option_d, competence_level, course_outcome, portion, figure</span></li>
+                          <li>• For MCQ (1 mark): All 4 options are required</li>
+                          <li>• competence_level values: <span className="font-medium">K1, K2, K3, K4, K5, K6</span></li>
+                        </ul>
+                        <a
+                          href="http://localhost:7000/uploads/sample_question_upload.csv"
+                          download="sample_question_upload.csv"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-[#4b37cd] text-white text-sm font-medium rounded-lg hover:bg-[#3d2ba7] transition-all duration-200"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="7 10 12 15 17 10" />
+                            <line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                          Download Sample File
+                        </a>
+                      </div>
                     </div>
                   )}
                 </div>

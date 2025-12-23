@@ -299,23 +299,78 @@ router.post("/upload", upload.single("file"), verifyToken, (req, res) => {
     const workbook = xlsx.readFile(filePath);
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData = xlsx.utils.sheet_to_json(worksheet);
+    // Use defval to keep empty cells and raw:false to coerce numbers as strings if needed
+    const rawRows = xlsx.utils.sheet_to_json(worksheet, { defval: "", raw: false });
+
+    // Helper to normalize header keys (trim, lowercase, remove non-alphanumerics)
+    const toCanonical = (key) => {
+      if (!key) return null;
+      const s = String(key).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+      const map = {
+        unit: "unit",
+        topic: "topic",
+        mark: "mark",
+        marks: "mark",
+        question: "question",
+        answer: "answer",
+        optiona: "option_a",
+        optionb: "option_b",
+        optionc: "option_c",
+        optiond: "option_d",
+        cognitivedimension: "competence_level",
+        competencelevel: "competence_level",
+        knowledgedimension: "course_outcome",
+        courseoutcome: "course_outcome",
+        portion: "portion",
+        figure: "figure",
+        facultyid: "faculty_id",
+        vettingid: "vetting_id",
+      };
+      return map[s] || null;
+    };
+
+    // Build canonical header set from the first row
+    const headerKeys = rawRows[0] ? Object.keys(rawRows[0]) : [];
+    const canonicalHeader = new Set(headerKeys.map((k) => toCanonical(k)).filter(Boolean));
+    const required = ["unit", "topic", "mark", "question", "answer"];
+    const missing = required.filter((r) => !canonicalHeader.has(r));
+    if (missing.length > 0) {
+      fs.unlink(filePath, (err) => {
+        if (err) console.error("Failed to delete invalid file:", err);
+      });
+      return res
+        .status(400)
+        .send(
+          `Missing required column headers: ${missing.join(", ")}. Expected at least: unit, topic, mark, question, answer.`
+        );
+    }
+
+    // Normalize each row to canonical keys
+    const normalizedRows = rawRows.map((row) => {
+      const out = {};
+      Object.entries(row).forEach(([k, v]) => {
+        const c = toCanonical(k);
+        if (c) out[c] = typeof v === "string" ? v.trim() : v;
+      });
+      return out;
+    });
 
     // Filter for valid rows
-    const results = jsonData.filter(
-      (data) =>
-        data.unit &&
-        data.topic &&
-        data.question &&
-        data.answer &&
-        !isNaN(parseInt(data.mark))
-    );
+    const results = normalizedRows.filter((data) => {
+      const hasRequired = data.unit && data.topic && data.question && data.answer;
+      const markNum = parseInt(String(data.mark || "").trim(), 10);
+      return hasRequired && !isNaN(markNum);
+    });
 
     if (results.length === 0) {
       fs.unlink(filePath, (err) => {
         if (err) console.error("Failed to delete invalid file:", err);
       });
-      return res.status(400).send("No valid questions found in the file.");
+      return res
+        .status(400)
+        .send(
+          "No valid questions found in the file. Ensure columns include unit, topic, mark, question, answer and mark is numeric."
+        );
     }
 
     // Get max existing ID
@@ -345,7 +400,7 @@ router.post("/upload", upload.single("file"), verifyToken, (req, res) => {
             currentId++,
             row.unit,
             row.topic,
-            parseInt(row.mark),
+            parseInt(String(row.mark).trim(), 10),
             row.question,
             row.answer,
             courseCode,
