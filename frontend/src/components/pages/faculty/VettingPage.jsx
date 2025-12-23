@@ -207,9 +207,14 @@ const VettingPage = () => {
         }
       )
       .then((res) => {
-        const vettingList = res.data.filter(
-          (item) => item.status !== "accepted"
-        );
+        const vettingList = res.data.filter((item) => {
+          if (item.status === "pending") {
+            // Only show pending for the assigned author when current user is vetter.
+            // If no mapping found (user not a vetter), hide all pending.
+            return vFacultyId ? item.faculty_id === vFacultyId : false;
+          }
+          return item.status !== "accepted";
+        });
 
         const sortedData = vettingList
           .slice()
@@ -233,7 +238,7 @@ const VettingPage = () => {
         toast.error("Failed to fetch questions");
       })
       .finally(() => setLoading(false));
-  }, [user?.course_id, refreshTrigger, token]);
+  }, [user?.course_id, refreshTrigger, token, vFacultyId]);
 
   // Filter questions based on search and status filter
   const filteredRows = questionRows.filter((row) => {
