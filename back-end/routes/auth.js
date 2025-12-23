@@ -11,7 +11,7 @@ router.post('/check-user', (req, res) => {
   if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
 
   const query = `
-    SELECT u.id, u.email, r.role AS role_name
+    SELECT u.id, u.email, u.name, u.faculty_id, u.photo, r.role AS role_name
     FROM users u
     LEFT JOIN role r ON u.role = r.id
     WHERE u.email = ?
@@ -25,20 +25,74 @@ router.post('/check-user', (req, res) => {
     if (!results.length) return res.status(404).json({ success: false, message: 'User not found' });
 
     const user = results[0];
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role_name },
-      JWT_SECRET,
-      { expiresIn: '1h' }
-    );
 
-    return res.json({
-      success: true,
-      user: {
-        // id: user.id,
+    // If admin, issue token directly
+    if (user.role_name === 'admin') {
+      const payload = {
+        id: user.id,
         email: user.email,
-        role: user.role_name
-      },
-      token
+        name: user.name,
+        role: 'admin',
+      };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+      return res.json({ success: true, user: payload, token });
+    }
+
+    // For faculty, replicate course selection flow
+    const courseQuery = `
+      SELECT 
+        c.id as course_id, 
+        c.course_code, 
+        c.subject,
+        d.department
+      FROM faculty_course fc
+      JOIN course c ON fc.course = c.id
+      JOIN department d ON fc.dept = d.id
+      WHERE fc.faculty = ?
+    `;
+
+    db.query(courseQuery, [user.id], (courseErr, courseResults) => {
+      if (courseErr) {
+        console.error('DB error:', courseErr);
+        return res.status(500).json({ success: false, message: 'Error fetching faculty courses.' });
+      }
+
+      if (courseResults.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are not assigned to any courses. Please contact an admin.'
+        });
+      }
+
+      if (courseResults.length > 1) {
+        const userPayload = {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          faculty_id: user.faculty_id,
+          photo: user.photo,
+          role: 'faculty',
+        };
+        return res.json({
+          success: true,
+          requiresSelection: true,
+          user: userPayload,
+          courses: courseResults,
+        });
+      }
+
+      const singleCourse = courseResults[0];
+      const payload = {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        faculty_id: user.faculty_id,
+        role: 'faculty',
+        course_id: singleCourse.course_id,
+        course_code: singleCourse.course_code,
+      };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+      return res.json({ success: true, user: payload, token });
     });
   });
 });

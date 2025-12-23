@@ -124,9 +124,12 @@ const LoginPage = () => {
         email: user.email,
       });
 
-      if (res.data.success) {
-        // This flow assumes Google users only have one course or are admins.
-        // A more complex flow would be needed if they can have multiple courses.
+      if (res.data.requiresSelection) {
+        setSelectedUser(res.data.user);
+        setCourseOptions(res.data.courses || []);
+        setShowCourseSelection(true);
+        toast.info('Select a course to continue.');
+      } else if (res.data.success) {
         localStorage.setItem('token', res.data.token);
         dispatch(setUser(res.data.user));
         toast.success("Login successful!");
@@ -137,14 +140,16 @@ const LoginPage = () => {
           navigate('/facultydashboard');
         }
       } else {
-        toast.error('You are not registered. Please contact the administrator.');
+        const msg = res.data?.message || 'You are not registered. Please contact the administrator.';
+        toast.error(msg);
       }
     } catch (error) {
       console.error("Google sign-in error:", error);
       if (error.response && error.response.status === 404) {
         toast.error('You are not registered. Please contact the administrator.');
       } else {
-        toast.error('Google login failed. Please try again.');
+        const msg = error.response?.data || 'Google login failed. Please try again.';
+        toast.error(msg);
       }
     } finally {
       setGoogleLoading(false);

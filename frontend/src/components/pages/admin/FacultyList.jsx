@@ -747,9 +747,9 @@ const FacultyList = () => {
           </div>
 
           {/* Stats Cards */}
-          <div className="px-6 py-6 bg-gray-50/50">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+          <div className="px-6 py-6 bg-white">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="bg-purple-100 p-3 rounded-lg">
                     <Users size={24} className="text-purple-600" />
